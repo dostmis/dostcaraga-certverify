@@ -1,0 +1,110 @@
+name: cert-verify
+
+services:
+  app:
+    build:
+      context: .
+      target: app-runtime
+    image: cert-verify-app:local
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${DOCKER_APP_URL:-http://localhost:8080}
+      DB_HOST: db
+      DB_PORT: 5432
+      TRUSTED_PROXIES: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - app_storage:/var/www/html/storage
+
+  worker:
+    image: cert-verify-app:local
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${DOCKER_APP_URL:-http://localhost:8080}
+      DB_HOST: db
+      DB_PORT: 5432
+      TRUSTED_PROXIES: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - app_storage:/var/www/html/storage
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--timeout=120", "--max-time=3600"]
+
+  web:
+    build:
+      context: .
+      target: nginx
+    image: cert-verify-web:local
+    restart: unless-stopped
+    init: true
+    depends_on:
+      - app
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-8080}:80"
+    volumes:
+      - app_storage:/var/www/html/storage:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    init: true
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-certverify}
+      POSTGRES_USER: ${DB_USERNAME:-certverify_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      - "${DB_FORWARD_BIND:-127.0.0.1}:${DB_FORWARD_PORT:-54329}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-certverify_user} -d ${DB_DATABASE:-certverify}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db-backup:
+    build:
+      context: ./docker/backup
+    image: cert-verify-db-backup:local
+    restart: unless-stopped
+    init: true
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-certverify}
+      DB_USERNAME: ${DB_USERNAME:-certverify_user}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      BACKUP_DIR: /backups
+      BACKUP_CRON_SCHEDULE: "${DB_BACKUP_CRON_SCHEDULE:-0 */6 * * *}"
+      BACKUP_RETENTION_DAYS: ${DB_BACKUP_RETENTION_DAYS:-14}
+      BACKUP_KEEP_MIN_FILES: ${DB_BACKUP_KEEP_MIN_FILES:-10}
+      BACKUP_RUN_ON_START: ${DB_BACKUP_RUN_ON_START:-true}
+      TZ: ${TZ:-UTC}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - db_backups:/backups
+
+volumes:
+  app_storage:
+  postgres_data:
+  db_backups:

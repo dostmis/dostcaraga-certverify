@@ -1,6 +1,6 @@
 FROM postgres:16-alpine
 
-RUN apk add --no-cache tzdata
+RUN apk add --no-cache gnupg tzdata
 
 COPY backup-db.sh /usr/local/bin/backup-db.sh
 COPY entrypoint.sh /usr/local/bin/backup-entrypoint.sh

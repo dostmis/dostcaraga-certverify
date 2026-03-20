@@ -46,10 +46,16 @@ Backups are written to Docker volume `db_backups` by service `db-backup`.
 
 Default behavior:
 
-- runs every 6 hours (`DB_BACKUP_CRON_SCHEDULE=0 */6 * * *`)
-- keeps backups for 14 days (`DB_BACKUP_RETENTION_DAYS=14`)
-- always keeps at least 10 backup files (`DB_BACKUP_KEEP_MIN_FILES=10`)
+- runs every 2 hours (`DB_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
+- keeps only the latest 10 backup files (`DB_BACKUP_MAX_FILES=10`)
 - runs one backup when container starts (`DB_BACKUP_RUN_ON_START=true`)
+
+Optional GPG encryption:
+
+- enable encryption (`DB_BACKUP_GPG_ENABLED=true`)
+- symmetric encryption passphrase (`DB_BACKUP_GPG_PASSPHRASE=your-strong-passphrase`)
+- or recipient key encryption (`DB_BACKUP_GPG_RECIPIENT=backup@your-domain.example`)
+- keep unencrypted `.sql.gz` copy (`DB_BACKUP_KEEP_PLAIN=true|false`)
 
 Useful commands:
 
@@ -61,10 +67,16 @@ docker compose exec db-backup /bin/sh /usr/local/bin/backup-db.sh
 
 ## 4. Restore a backup
 
-Restore from `.sql` or `.sql.gz` file:
+Restore from `.sql`, `.sql.gz`, or encrypted `.sql.gz.gpg` file:
 
 ```bash
 CONFIRM_RESTORE=YES DB_USERNAME=certverify_user DB_DATABASE=certverify ./scripts/restore-db-backup.sh /path/to/backup.sql.gz
+```
+
+For encrypted backups that use passphrase mode:
+
+```bash
+CONFIRM_RESTORE=YES DB_BACKUP_GPG_PASSPHRASE='your-strong-passphrase' DB_USERNAME=certverify_user DB_DATABASE=certverify ./scripts/restore-db-backup.sh /path/to/backup.sql.gz.gpg
 ```
 
 Use restore carefully on production because it overwrites existing data.

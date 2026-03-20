@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-BACKUP_CRON_SCHEDULE="${BACKUP_CRON_SCHEDULE:-0 */6 * * *}"
+BACKUP_CRON_SCHEDULE="${BACKUP_CRON_SCHEDULE:-0 */2 * * *}"
 BACKUP_RUN_ON_START="${BACKUP_RUN_ON_START:-true}"
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
 CRON_FILE="/etc/crontabs/root"

@@ -39,6 +39,11 @@ php artisan serve
 
 Automated PostgreSQL backups are handled by `db-backup` service and stored in Docker volume `db_backups`.
 
+- default schedule is every 2 hours (`DB_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
+- retention keeps only latest 10 backup files (`DB_BACKUP_MAX_FILES=10`)
+- set `DB_BACKUP_GPG_ENABLED=true` to produce encrypted `.sql.gz.gpg` backups
+- use `DB_BACKUP_GPG_PASSPHRASE` (symmetric) or `DB_BACKUP_GPG_RECIPIENT` (public key)
+
 - trigger backup now:
 
 ```bash
@@ -49,4 +54,10 @@ docker compose exec db-backup /bin/sh /usr/local/bin/backup-db.sh
 
 ```bash
 CONFIRM_RESTORE=YES DB_USERNAME=certverify_user DB_DATABASE=certverify ./scripts/restore-db-backup.sh /path/to/backup.sql.gz
+```
+
+- restore encrypted backup file:
+
+```bash
+CONFIRM_RESTORE=YES DB_BACKUP_GPG_PASSPHRASE='your-strong-passphrase' DB_USERNAME=certverify_user DB_DATABASE=certverify ./scripts/restore-db-backup.sh /path/to/backup.sql.gz.gpg
 ```

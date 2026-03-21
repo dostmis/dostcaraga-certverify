@@ -33,6 +33,8 @@ php -r "echo 'base64:'.base64_encode(random_bytes(32)).PHP_EOL;"
 ## 2. Start stack
 
 ```bash
+npm ci
+npm run build
 docker compose up -d --build
 docker compose exec app php artisan migrate --force
 docker compose exec app php artisan optimize
@@ -81,7 +83,42 @@ CONFIRM_RESTORE=YES DB_BACKUP_GPG_PASSPHRASE='your-strong-passphrase' DB_USERNAM
 
 Use restore carefully on production because it overwrites existing data.
 
-## 5. Transfer to new server
+## 5. Move Uploaded PDFs And Templates
+
+The database only stores paths like `certificate-endorsements/templates/...pdf` and
+`certificates/stamped/...pdf`. The actual files live in the Docker `app_storage` volume,
+so SQL dumps alone are not enough to migrate previews and downloads.
+
+Create a storage archive on the old server:
+
+```bash
+./scripts/backup-app-storage.sh ./app-storage.tar.gz
+```
+
+Copy `app-storage.tar.gz` to the new server, then restore it:
+
+```bash
+CONFIRM_RESTORE_STORAGE=YES ./scripts/restore-app-storage.sh ./app-storage.tar.gz
+docker compose exec app php artisan certificates:migrate-private-storage
+```
+
+Do not rely on GitHub for live generated PDFs or uploaded participant/template files. They are runtime storage
+artifacts and may contain personal data. Git also cannot see Docker volume contents unless you explicitly export
+them back into the repository first.
+
+If you want the whole verifier system in one portable backup, create a combined bundle:
+
+```bash
+./scripts/backup-full-system.sh ./cert-verify_full-clone.tar.gz
+```
+
+Restore the combined bundle on the new server:
+
+```bash
+CONFIRM_RESTORE_FULL=YES ./scripts/restore-full-system.sh ./cert-verify_full-clone.tar.gz
+```
+
+## 6. Transfer to new server
 
 On new server:
 
@@ -91,7 +128,7 @@ On new server:
 4. Run start/migrate commands from section 2.
 5. Point your domain or reverse proxy to `${APP_BIND}:${APP_PORT}`.
 
-## 6. GitHub upload
+## 7. GitHub upload
 
 If repository is not initialized yet:
 

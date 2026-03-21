@@ -17,6 +17,11 @@
 /public/build
 /public/hot
 /public/storage
+/app-storage*.tar.gz
+/cert-verify_full-clone*.tar.gz
+/db/*.sql
+/db/*.sql.gz
+/db/*.sql.gpg
 /storage/*.key
 /storage/pail
 /backups

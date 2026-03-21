@@ -1,25 +1,42 @@
-FROM php:8.2-fpm-bookworm AS php-base
+FROM php:8.3-fpm-bookworm AS php-base
 
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
-RUN apt-get update \
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i \
+            -e 's|http://deb.debian.org/debian|https://deb.debian.org/debian|g' \
+            -e 's|http://deb.debian.org/debian-security|https://deb.debian.org/debian-security|g' \
+            -e 's|http://security.debian.org/debian-security|https://security.debian.org/debian-security|g' \
+            /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+        sed -i \
+            -e 's|http://deb.debian.org/debian|https://deb.debian.org/debian|g' \
+            -e 's|http://deb.debian.org/debian-security|https://deb.debian.org/debian-security|g' \
+            -e 's|http://security.debian.org/debian-security|https://security.debian.org/debian-security|g' \
+            /etc/apt/sources.list; \
+    fi; \
+    apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
     && apt-get install -y --no-install-recommends \
         ghostscript \
         gosu \
         git \
+        imagemagick \
         libfreetype6-dev \
         libjpeg62-turbo-dev \
+        libmagickwand-dev \
         libonig-dev \
         libpng-dev \
         libpq-dev \
-        libxml2-dev \
         libzip-dev \
         unzip \
         zip \
+    && pecl install imagick \
+    && docker-php-ext-enable imagick \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" \
         bcmath \
-        dom \
         exif \
         gd \
         mbstring \
@@ -27,10 +44,6 @@ RUN apt-get update \
         pcntl \
         pdo_pgsql \
         pgsql \
-        simplexml \
-        xml \
-        xmlreader \
-        xmlwriter \
         zip \
     && rm -rf /var/lib/apt/lists/*
 
@@ -54,31 +67,18 @@ RUN composer install \
     --prefer-dist \
     --optimize-autoloader
 
-FROM node:20-bookworm-slim AS node-builder
-
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-
-RUN npm ci
-
-COPY resources ./resources
-COPY public ./public
-COPY vite.config.js ./
-COPY postcss.config.js ./
-COPY tailwind.config.js ./
-
-RUN npm run build
-
 FROM php-base AS app-runtime
 
 COPY . .
 COPY --from=composer-deps /var/www/html/vendor ./vendor
 COPY --from=composer-deps /var/www/html/bootstrap/cache ./bootstrap/cache
-COPY --from=node-builder /app/public/build ./public/build
 COPY docker/php/entrypoint.sh /usr/local/bin/docker-entrypoint-app
 
 RUN chmod +x /usr/local/bin/docker-entrypoint-app \
+    && if [ ! -f public/build/manifest.json ]; then \
+        echo "Missing Vite build output. Run 'npm ci && npm run build' on the host before docker compose build." >&2; \
+        exit 1; \
+    fi \
     && mkdir -p \
         bootstrap/cache \
         storage/app/private \
@@ -92,14 +92,44 @@ RUN chmod +x /usr/local/bin/docker-entrypoint-app \
 ENTRYPOINT ["docker-entrypoint-app"]
 CMD ["php-fpm"]
 
-FROM nginx:1.27-alpine AS nginx
+FROM php-base AS nginx
+
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i \
+            -e 's|http://deb.debian.org/debian|https://deb.debian.org/debian|g' \
+            -e 's|http://deb.debian.org/debian-security|https://deb.debian.org/debian-security|g' \
+            -e 's|http://security.debian.org/debian-security|https://security.debian.org/debian-security|g' \
+            /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+        sed -i \
+            -e 's|http://deb.debian.org/debian|https://deb.debian.org/debian|g' \
+            -e 's|http://deb.debian.org/debian-security|https://deb.debian.org/debian-security|g' \
+            -e 's|http://security.debian.org/debian-security|https://security.debian.org/debian-security|g' \
+            /etc/apt/sources.list; \
+    fi; \
+    apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+    && apt-get install -y --no-install-recommends \
+        nginx \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html
 
 COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY public ./public
-COPY --from=node-builder /app/public/build ./public/build
 
-RUN rm -rf /var/www/html/public/storage \
+RUN rm -f /etc/nginx/sites-enabled/default \
+    && if [ ! -f public/build/manifest.json ]; then \
+        echo "Missing Vite build output. Run 'npm ci && npm run build' on the host before docker compose build." >&2; \
+        exit 1; \
+    fi \
+    && rm -rf /var/www/html/public/storage \
     && mkdir -p /var/www/html/storage/app/public \
+    && mkdir -p /run/nginx \
     && ln -s /var/www/html/storage/app/public /var/www/html/public/storage
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

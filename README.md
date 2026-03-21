@@ -16,6 +16,8 @@ Quick start:
 
 ```bash
 cp .env.docker.example .env
+npm ci
+npm run build
 docker compose up -d --build
 docker compose exec app php artisan migrate --force
 docker compose exec app php artisan optimize
@@ -39,6 +41,9 @@ php artisan serve
 
 Automated PostgreSQL backups are handled by `db-backup` service and stored in Docker volume `db_backups`.
 
+Certificate templates, participant uploads, generated PDFs, and signatory images live in the Docker `app_storage`
+volume, not in Git. A SQL restore only restores database rows and file paths, not the actual uploaded files.
+
 - default schedule is every 2 hours (`DB_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
 - retention keeps only latest 10 backup files (`DB_BACKUP_MAX_FILES=10`)
 - set `DB_BACKUP_GPG_ENABLED=true` to produce encrypted `.sql.gz.gpg` backups
@@ -60,4 +65,29 @@ CONFIRM_RESTORE=YES DB_USERNAME=certverify_user DB_DATABASE=certverify ./scripts
 
 ```bash
 CONFIRM_RESTORE=YES DB_BACKUP_GPG_PASSPHRASE='your-strong-passphrase' DB_USERNAME=certverify_user DB_DATABASE=certverify ./scripts/restore-db-backup.sh /path/to/backup.sql.gz.gpg
+```
+
+- backup app storage files:
+
+```bash
+./scripts/backup-app-storage.sh ./app-storage.tar.gz
+```
+
+- restore app storage files:
+
+```bash
+CONFIRM_RESTORE_STORAGE=YES ./scripts/restore-app-storage.sh ./app-storage.tar.gz
+docker compose exec app php artisan certificates:migrate-private-storage
+```
+
+- create a full portable clone of DB + storage:
+
+```bash
+./scripts/backup-full-system.sh ./cert-verify_full-clone.tar.gz
+```
+
+- restore a full portable clone:
+
+```bash
+CONFIRM_RESTORE_FULL=YES ./scripts/restore-full-system.sh ./cert-verify_full-clone.tar.gz
 ```

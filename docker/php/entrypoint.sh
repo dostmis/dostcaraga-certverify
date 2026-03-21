@@ -20,4 +20,10 @@ chown -R www-data:www-data storage bootstrap/cache
 
 gosu www-data php artisan storage:link --force >/dev/null 2>&1 || true
 
+case "${1:-}" in
+    php-fpm|php-fpm*)
+        exec "$@"
+        ;;
+esac
+
 exec gosu www-data "$@"

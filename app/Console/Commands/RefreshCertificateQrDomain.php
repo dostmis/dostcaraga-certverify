@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Certificate;
+use App\Support\PdfImageNormalizer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
@@ -130,6 +131,11 @@ class RefreshCertificateQrDomain extends Command
         $tmpQr = storage_path('app/tmp_qr_' . uniqid('', true) . '.png');
         @mkdir(dirname($tmpQr), 0777, true);
         file_put_contents($tmpQr, $qrPng);
+        $temporaryFiles = [$tmpQr];
+        $qrForPdf = PdfImageNormalizer::prepareForFpdf($tmpQr);
+        if ($qrForPdf !== $tmpQr) {
+            $temporaryFiles[] = $qrForPdf;
+        }
 
         $pdf = new Fpdi();
         $converted = null;
@@ -160,7 +166,7 @@ class RefreshCertificateQrDomain extends Command
             $y = min($size['height'] - $qrSize - $margin, $maxY);
             $y = max($margin, $y);
 
-            $pdf->Image($tmpQr, $x, $y, $qrSize, $qrSize);
+            $pdf->Image($qrForPdf, $x, $y, $qrSize, $qrSize);
 
             $pdf->SetFont('Helvetica', '', 8);
             $pdf->SetTextColor(0, 0, 0);
@@ -178,7 +184,9 @@ class RefreshCertificateQrDomain extends Command
             $pdf->Text($linkX, $linkY, $linkText);
         }
 
-        @unlink($tmpQr);
+        foreach (array_unique($temporaryFiles) as $temporaryFile) {
+            @unlink($temporaryFile);
+        }
         if ($converted) {
             @unlink($converted);
         }

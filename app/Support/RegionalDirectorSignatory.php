@@ -9,6 +9,7 @@ class RegionalDirectorSignatory
 {
     public const KEY_ENABLED = 'cert_rd_esign_enabled';
     public const KEY_PATH = 'cert_rd_esign_path';
+    public const ENV_OVERRIDE_PATH = 'CERT_RD_ESIGN_PATH_OVERRIDE';
 
     public static function enabled(): bool
     {
@@ -28,6 +29,11 @@ class RegionalDirectorSignatory
 
     public static function configuredPath(): ?string
     {
+        $overridePath = trim((string) env(static::ENV_OVERRIDE_PATH, ''));
+        if ($overridePath !== '') {
+            return $overridePath;
+        }
+
         $stored = static::trimmedSetting(static::KEY_PATH);
         if ($stored !== null) {
             return $stored;

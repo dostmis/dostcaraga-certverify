@@ -2,8 +2,9 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -19,9 +20,18 @@ class AppServiceProvider extends ServiceProvider
      * Bootstrap any application services.
      */
     public function boot(): void
-{
-    if (app()->environment('production')) {
-        URL::forceScheme('https');
+    {
+        if ($this->shouldForceHttps()) {
+            URL::forceScheme('https');
+        }
     }
-}
+
+    private function shouldForceHttps(): bool
+    {
+        if (! app()->environment('production')) {
+            return false;
+        }
+
+        return Str::startsWith((string) config('app.url'), 'https://');
+    }
 }

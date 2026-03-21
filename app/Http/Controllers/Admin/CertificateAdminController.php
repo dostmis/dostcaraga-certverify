@@ -8,6 +8,7 @@ use App\Models\Certificate;
 use App\Models\CertificateEndorsement;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\PdfImageNormalizer;
 use App\Support\RegionalDirectorSignatory;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
@@ -1595,6 +1596,11 @@ class CertificateAdminController extends Controller
         $tmpQr = storage_path('app/tmp_qr_' . Str::uuid() . '.png');
         @mkdir(dirname($tmpQr), 0777, true);
         file_put_contents($tmpQr, $qrPng);
+        $temporaryFiles = [$tmpQr];
+        $qrForPdf = PdfImageNormalizer::prepareForFpdf($tmpQr);
+        if ($qrForPdf !== $tmpQr) {
+            $temporaryFiles[] = $qrForPdf;
+        }
 
         $pdf = new Fpdi();
         $converted = null;
@@ -1639,7 +1645,7 @@ class CertificateAdminController extends Controller
             $y = min($size['height'] - $qrSize - $margin, $maxY);
             $y = max($margin, $y);
 
-            $pdf->Image($tmpQr, $x, $y, $qrSize, $qrSize);
+            $pdf->Image($qrForPdf, $x, $y, $qrSize, $qrSize);
 
             $pdf->SetFont('Helvetica', '', 8);
             $pdf->SetTextColor(0, 0, 0);
@@ -1657,7 +1663,9 @@ class CertificateAdminController extends Controller
             $pdf->Text($linkX, $linkY, $linkText);
         }
 
-        @unlink($tmpQr);
+        foreach (array_unique($temporaryFiles) as $temporaryFile) {
+            @unlink($temporaryFile);
+        }
         if ($converted) {
             @unlink($converted);
         }
@@ -1720,8 +1728,7 @@ class CertificateAdminController extends Controller
             return null;
         }
 
-        $width = (float) env('CERT_RD_ESIGN_WIDTH', 52);
-        $height = (float) env('CERT_RD_ESIGN_HEIGHT', 18);
+        [$width, $height] = $this->resolveRegionalDirectorESignDimensions($esignPath);
         if ($width <= 0 || $height <= 0) {
             return null;
         }
@@ -1749,6 +1756,36 @@ class CertificateAdminController extends Controller
             'y' => $y,
             'width' => $width,
             'height' => $height,
+        ];
+    }
+
+    private function resolveRegionalDirectorESignDimensions(string $esignPath): array
+    {
+        $maxWidth = (float) env('CERT_RD_ESIGN_WIDTH', 52);
+        $maxHeight = (float) env('CERT_RD_ESIGN_HEIGHT', 18);
+        if ($maxWidth <= 0 || $maxHeight <= 0) {
+            return [0.0, 0.0];
+        }
+
+        $imageSize = @getimagesize($esignPath);
+        if (!$imageSize) {
+            return [$maxWidth, $maxHeight];
+        }
+
+        $sourceWidth = (float) ($imageSize[0] ?? 0);
+        $sourceHeight = (float) ($imageSize[1] ?? 0);
+        if ($sourceWidth <= 0 || $sourceHeight <= 0) {
+            return [$maxWidth, $maxHeight];
+        }
+
+        $scale = min($maxWidth / $sourceWidth, $maxHeight / $sourceHeight);
+        if ($scale <= 0) {
+            return [$maxWidth, $maxHeight];
+        }
+
+        return [
+            round($sourceWidth * $scale, 2),
+            round($sourceHeight * $scale, 2),
         ];
     }
 
@@ -1860,6 +1897,7 @@ class CertificateAdminController extends Controller
                 true
             );
         } catch (\Throwable $e) {
+            report($e);
             abort(422, $e->getMessage());
         }
 

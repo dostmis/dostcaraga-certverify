@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OUTPUT_FILE="${1:-./app-storage_$(date -u +%Y%m%dT%H%M%SZ).tar.gz}"
+BACKUP_TIMEZONE="${BACKUP_TIMEZONE:-Asia/Manila}"
+BACKUP_TZ_LABEL="${BACKUP_TZ_LABEL:-PHT}"
+OUTPUT_FILE="${1:-./app-storage_$(TZ="$BACKUP_TIMEZONE" date +%Y%m%dT%H%M%S)${BACKUP_TZ_LABEL}.tar.gz}"
 OUTPUT_DIR="$(dirname "$OUTPUT_FILE")"
 OUTPUT_BASENAME="$(basename "$OUTPUT_FILE")"
 CONTAINER_ARCHIVE="/tmp/${OUTPUT_BASENAME}"

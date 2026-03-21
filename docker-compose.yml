@@ -87,6 +87,7 @@ services:
     restart: unless-stopped
     init: true
     environment:
+      BACKUP_SCRIPT: /usr/local/bin/backup-db.sh
       DB_HOST: db
       DB_PORT: 5432
       DB_DATABASE: ${DB_DATABASE:-certverify}
@@ -94,20 +95,46 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-secret}
       BACKUP_DIR: /backups
       BACKUP_CRON_SCHEDULE: "${DB_BACKUP_CRON_SCHEDULE:-0 */2 * * *}"
+      BACKUP_KEEP_MIN_FILES: ${DB_BACKUP_KEEP_MIN_FILES:-10}
       BACKUP_MAX_FILES: ${DB_BACKUP_MAX_FILES:-10}
       BACKUP_RUN_ON_START: ${DB_BACKUP_RUN_ON_START:-true}
       BACKUP_GPG_ENABLED: ${DB_BACKUP_GPG_ENABLED:-false}
       BACKUP_GPG_PASSPHRASE: ${DB_BACKUP_GPG_PASSPHRASE:-}
       BACKUP_GPG_RECIPIENT: ${DB_BACKUP_GPG_RECIPIENT:-}
       BACKUP_KEEP_PLAIN: ${DB_BACKUP_KEEP_PLAIN:-false}
-      TZ: ${TZ:-UTC}
+      BACKUP_TIMEZONE: ${BACKUP_TIMEZONE:-Asia/Manila}
+      BACKUP_TZ_LABEL: ${BACKUP_TZ_LABEL:-PHT}
+      TZ: ${BACKUP_TIMEZONE:-Asia/Manila}
     depends_on:
       db:
         condition: service_healthy
     volumes:
-      - db_backups:/backups
+      - ${BACKUP_TARGET_DIR:-./backups}/database:/backups
+
+  app-storage-backup:
+    build:
+      context: ./docker/backup
+    image: cert-verify-app-storage-backup:local
+    restart: unless-stopped
+    init: true
+    environment:
+      BACKUP_SCRIPT: /usr/local/bin/backup-app-storage.sh
+      BACKUP_DIR: /backups
+      BACKUP_CRON_SCHEDULE: "${APP_STORAGE_BACKUP_CRON_SCHEDULE:-0 */2 * * *}"
+      BACKUP_KEEP_MIN_FILES: ${APP_STORAGE_BACKUP_KEEP_MIN_FILES:-10}
+      BACKUP_MAX_FILES: ${APP_STORAGE_BACKUP_MAX_FILES:-10}
+      BACKUP_RUN_ON_START: ${APP_STORAGE_BACKUP_RUN_ON_START:-true}
+      APP_STORAGE_SOURCE: /app-storage
+      BACKUP_TIMEZONE: ${BACKUP_TIMEZONE:-Asia/Manila}
+      BACKUP_TZ_LABEL: ${BACKUP_TZ_LABEL:-PHT}
+      TZ: ${BACKUP_TIMEZONE:-Asia/Manila}
+    depends_on:
+      app:
+        condition: service_started
+    volumes:
+      - app_storage:/app-storage:ro
+      - ${BACKUP_TARGET_DIR:-./backups}/app-storage:/backups
 
 volumes:
   app_storage:
   postgres_data:
-  db_backups:

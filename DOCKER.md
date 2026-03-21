@@ -1,6 +1,6 @@
 # Docker Production Setup
 
-This stack is ready for production transfer to a new server and includes automated PostgreSQL backups.
+This stack is ready for production transfer to a new server and includes automated PostgreSQL and app storage backups.
 
 ## Services
 
@@ -9,6 +9,7 @@ This stack is ready for production transfer to a new server and includes automat
 - `worker`: Laravel queue worker
 - `db`: PostgreSQL
 - `db-backup`: Scheduled PostgreSQL dump service (cron + retention policy)
+- `app-storage-backup`: Scheduled Laravel storage archive service (cron + retention policy)
 
 ## 1. Prepare environment
 
@@ -22,7 +23,7 @@ Set real values in `.env`, especially:
 - `DOCKER_APP_URL`
 - `DB_PASSWORD`
 - SMTP credentials (`MAIL_*`)
-- backup settings (`DB_BACKUP_*`)
+- backup settings (`BACKUP_TARGET_DIR`, `DB_BACKUP_*`, `APP_STORAGE_BACKUP_*`)
 
 Generate an `APP_KEY` (paste output into `.env`):
 
@@ -44,13 +45,19 @@ Default app URL is `http://localhost:8080` unless `APP_PORT`/`APP_BIND` is chang
 
 ## 3. Backup system (automatic)
 
-Backups are written to Docker volume `db_backups` by service `db-backup`.
+Backups are written to `${BACKUP_TARGET_DIR:-./backups}` on the host:
+
+- `db-backup` writes PostgreSQL dumps into `${BACKUP_TARGET_DIR}/database`
+- `app-storage-backup` writes Laravel storage archives into `${BACKUP_TARGET_DIR}/app-storage`
 
 Default behavior:
 
-- runs every 2 hours (`DB_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
-- keeps only the latest 10 backup files (`DB_BACKUP_MAX_FILES=10`)
-- runs one backup when container starts (`DB_BACKUP_RUN_ON_START=true`)
+- DB backup runs every 2 hours (`DB_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
+- app storage backup runs every 2 hours (`APP_STORAGE_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
+- DB retention keeps only the latest 10 backup files (`DB_BACKUP_MAX_FILES=10`)
+- app storage retention keeps only the latest 10 archive files (`APP_STORAGE_BACKUP_MAX_FILES=10`)
+- backup filenames and logs use Philippine Time by default (`BACKUP_TIMEZONE=Asia/Manila`, `BACKUP_TZ_LABEL=PHT`)
+- both services run one backup when containers start (`DB_BACKUP_RUN_ON_START=true`, `APP_STORAGE_BACKUP_RUN_ON_START=true`)
 
 Optional GPG encryption:
 
@@ -62,9 +69,33 @@ Optional GPG encryption:
 Useful commands:
 
 ```bash
-docker compose logs -f db-backup
+docker compose logs -f db-backup app-storage-backup
 docker compose exec db-backup ls -lh /backups
 docker compose exec db-backup /bin/sh /usr/local/bin/backup-db.sh
+docker compose exec app-storage-backup ls -lh /backups
+docker compose exec app-storage-backup /bin/sh /usr/local/bin/backup-app-storage.sh
+```
+
+To write backups directly to the NAS path `\\192.168.0.206\mis\cert-verify` from this Linux host,
+mount the NAS share first and point `BACKUP_TARGET_DIR` at the mounted `cert-verify` folder:
+
+```bash
+sudo mkdir -p /mnt/cert-verify-nas
+sudo mount -t cifs //192.168.0.206/mis /mnt/cert-verify-nas \
+  -o username=YOUR_NAS_USERNAME,password=YOUR_NAS_PASSWORD,vers=3.0,uid=$(id -u),gid=$(id -g),file_mode=0664,dir_mode=0775
+mkdir -p /mnt/cert-verify-nas/cert-verify
+```
+
+Then set in `.env`:
+
+```bash
+BACKUP_TARGET_DIR=/mnt/cert-verify-nas/cert-verify
+```
+
+Recreate the backup services after changing `.env`:
+
+```bash
+docker compose up -d --build db-backup app-storage-backup
 ```
 
 ## 4. Restore a backup

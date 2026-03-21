@@ -12,15 +12,21 @@ GPG_ENABLED="${BACKUP_GPG_ENABLED:-false}"
 GPG_PASSPHRASE="${BACKUP_GPG_PASSPHRASE:-}"
 GPG_RECIPIENT="${BACKUP_GPG_RECIPIENT:-}"
 KEEP_PLAIN="${BACKUP_KEEP_PLAIN:-false}"
+BACKUP_TIMEZONE="${BACKUP_TIMEZONE:-Asia/Manila}"
+BACKUP_TZ_LABEL="${BACKUP_TZ_LABEL:-PHT}"
 
-timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+timestamp="$(TZ="$BACKUP_TIMEZONE" date +%Y%m%dT%H%M%S)${BACKUP_TZ_LABEL}"
 raw_file="${BACKUP_DIR}/${DB_DATABASE}_${timestamp}.sql"
 gzip_file="${raw_file}.gz"
 gpg_file="${gzip_file}.gpg"
 
 mkdir -p "$BACKUP_DIR"
 
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Starting backup for ${DB_DATABASE} (${DB_HOST}:${DB_PORT})"
+log_timestamp() {
+    printf '%s %s' "$(TZ="$BACKUP_TIMEZONE" date +%Y-%m-%dT%H:%M:%S)" "$BACKUP_TZ_LABEL"
+}
+
+echo "[$(log_timestamp)] Starting backup for ${DB_DATABASE} (${DB_HOST}:${DB_PORT})"
 
 is_true() {
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
@@ -45,7 +51,7 @@ cleanup_by_pattern() {
         | while IFS= read -r old_file; do
             [ -n "$old_file" ] || continue
             rm -f "$old_file"
-            echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Deleted old backup to enforce max files (${MAX_FILES}): $(basename "$old_file")"
+            echo "[$(log_timestamp)] Deleted old backup to enforce max files (${MAX_FILES}): $(basename "$old_file")"
         done
 }
 
@@ -71,12 +77,12 @@ gzip -f "$raw_file"
 trap - EXIT
 
 if [ ! -f "$gzip_file" ]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Backup failed: output file was not created" >&2
+    echo "[$(log_timestamp)] Backup failed: output file was not created" >&2
     exit 1
 fi
 
 size_bytes="$(wc -c < "$gzip_file" | tr -d ' ')"
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Backup completed: $(basename "$gzip_file") (${size_bytes} bytes)"
+echo "[$(log_timestamp)] Backup completed: $(basename "$gzip_file") (${size_bytes} bytes)"
 
 if is_true "$GPG_ENABLED"; then
     if [ -n "$GPG_RECIPIENT" ]; then
@@ -89,16 +95,16 @@ if is_true "$GPG_ENABLED"; then
             --passphrase "$GPG_PASSPHRASE" \
             --output "$gpg_file" "$gzip_file"
     else
-        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] BACKUP_GPG_ENABLED=true but no BACKUP_GPG_PASSPHRASE or BACKUP_GPG_RECIPIENT was provided" >&2
+        echo "[$(log_timestamp)] BACKUP_GPG_ENABLED=true but no BACKUP_GPG_PASSPHRASE or BACKUP_GPG_RECIPIENT was provided" >&2
         exit 1
     fi
 
     gpg_size_bytes="$(wc -c < "$gpg_file" | tr -d ' ')"
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Encrypted backup completed: $(basename "$gpg_file") (${gpg_size_bytes} bytes)"
+    echo "[$(log_timestamp)] Encrypted backup completed: $(basename "$gpg_file") (${gpg_size_bytes} bytes)"
 
     if ! is_true "$KEEP_PLAIN"; then
         rm -f "$gzip_file"
-        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Removed unencrypted dump: $(basename "$gzip_file")"
+        echo "[$(log_timestamp)] Removed unencrypted dump: $(basename "$gzip_file")"
     fi
 fi
 
@@ -110,4 +116,4 @@ if is_true "$GPG_ENABLED"; then
     cleanup_by_pattern "${DB_DATABASE}_*.sql.gz.gpg"
 fi
 
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Backup run finished"
+echo "[$(log_timestamp)] Backup run finished"

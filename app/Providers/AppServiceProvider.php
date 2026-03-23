@@ -21,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+<<<<<<< HEAD
         if ($this->shouldForceHttps()) {
             URL::forceScheme('https');
         }
@@ -33,5 +34,19 @@ class AppServiceProvider extends ServiceProvider
         }
 
         return Str::startsWith((string) config('app.url'), 'https://');
+=======
+        if (app()->runningInConsole()) {
+            return;
+        }
+
+        $host = request()->getHost();
+        $isLocalHost = in_array($host, ['127.0.0.1', 'localhost', '0.0.0.0'], true);
+        $appUrlScheme = parse_url((string) config('app.url'), PHP_URL_SCHEME);
+
+        // Keep local built-in server access on HTTP, but force HTTPS for real domain traffic.
+        if (! $isLocalHost && $appUrlScheme === 'https') {
+            URL::forceScheme('https');
+        }
+>>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
     }
 }

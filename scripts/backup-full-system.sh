@@ -2,9 +2,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+<<<<<<< HEAD
 BACKUP_TIMEZONE="${BACKUP_TIMEZONE:-Asia/Manila}"
 BACKUP_TZ_LABEL="${BACKUP_TZ_LABEL:-PHT}"
 OUTPUT_FILE="${1:-./cert-verify_full-clone_$(TZ="$BACKUP_TIMEZONE" date +%Y%m%dT%H%M%S)${BACKUP_TZ_LABEL}.tar.gz}"
+=======
+OUTPUT_FILE="${1:-./cert-verify_full-clone_$(date -u +%Y%m%dT%H%M%SZ).tar.gz}"
+>>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
 OUTPUT_DIR="$(dirname "$OUTPUT_FILE")"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -38,9 +42,13 @@ pg_dump \
 "${SCRIPT_DIR}/backup-app-storage.sh" "${TMP_DIR}/app-storage.tar.gz"
 
 cat > "${TMP_DIR}/manifest.txt" <<EOF
+<<<<<<< HEAD
 created_at=$(TZ="$BACKUP_TIMEZONE" date +%Y-%m-%dT%H:%M:%S)
 created_at_timezone_label=${BACKUP_TZ_LABEL}
 created_at_timezone_name=${BACKUP_TIMEZONE}
+=======
+created_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+>>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
 bundle_type=cert-verify-full-clone
 db_backup=db.sql.gz
 storage_backup=app-storage.tar.gz

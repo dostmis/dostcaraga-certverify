@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+<<<<<<< HEAD
 BACKUP_TIMEZONE="${BACKUP_TIMEZONE:-Asia/Manila}"
 BACKUP_TZ_LABEL="${BACKUP_TZ_LABEL:-PHT}"
 OUTPUT_FILE="${1:-./app-storage_$(TZ="$BACKUP_TIMEZONE" date +%Y%m%dT%H%M%S)${BACKUP_TZ_LABEL}.tar.gz}"
@@ -8,6 +9,15 @@ OUTPUT_DIR="$(dirname "$OUTPUT_FILE")"
 OUTPUT_BASENAME="$(basename "$OUTPUT_FILE")"
 CONTAINER_ARCHIVE="/tmp/${OUTPUT_BASENAME}"
 
+=======
+OUTPUT_FILE="${1:-}"
+if [[ -z "$OUTPUT_FILE" ]]; then
+    echo "Usage: $0 /path/to/app-storage.tar.gz" >&2
+    exit 1
+fi
+
+OUTPUT_DIR="$(dirname "$OUTPUT_FILE")"
+>>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
 mkdir -p "$OUTPUT_DIR"
 
 if docker compose version >/dev/null 2>&1; then
@@ -20,6 +30,7 @@ else
 fi
 
 "${COMPOSE_CMD[@]}" up -d app >/dev/null
+<<<<<<< HEAD
 
 APP_CONTAINER_ID="$("${COMPOSE_CMD[@]}" ps -q app)"
 if [[ -z "$APP_CONTAINER_ID" ]]; then
@@ -53,3 +64,8 @@ docker cp "${APP_CONTAINER_ID}:${CONTAINER_ARCHIVE}" "$OUTPUT_FILE"
 "${COMPOSE_CMD[@]}" exec -T app sh -lc 'rm -f "$1"' cleanup-app-storage "$CONTAINER_ARCHIVE"
 
 echo "Created storage backup at $OUTPUT_FILE"
+=======
+"${COMPOSE_CMD[@]}" exec -T app sh -lc 'cd /var/www/html && tar -czf - storage' > "$OUTPUT_FILE"
+
+echo "Created app storage backup at $OUTPUT_FILE"
+>>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)

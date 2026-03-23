@@ -800,7 +800,7 @@ class CertificateAdminController extends Controller
                 true,
                 $previewCode,
                 $verifyUrl,
-                $this->isRegionalDirector($request->user())
+                true
             );
         } catch (\Throwable $e) {
             return back()
@@ -1728,37 +1728,49 @@ class CertificateAdminController extends Controller
             return null;
         }
 
+<<<<<<< HEAD
         [$width, $height] = $this->resolveRegionalDirectorESignDimensions($esignPath);
         if ($width <= 0 || $height <= 0) {
+=======
+        $boxWidth = (float) env('CERT_RD_ESIGN_WIDTH', 84);
+        $boxHeight = (float) env('CERT_RD_ESIGN_HEIGHT', 28);
+        if ($boxWidth <= 0 || $boxHeight <= 0) {
+>>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
             return null;
         }
+
+        [$width, $height] = $this->fitImageWithinBox($esignPath, $boxWidth, $boxHeight);
 
         $xEnv = env('CERT_RD_ESIGN_X');
         $yEnv = env('CERT_RD_ESIGN_Y');
 
         $x = is_numeric($xEnv)
             ? (float) $xEnv
-            : (($pageSize['width'] - $width) / 2);
+            : (($pageSize['width'] - $boxWidth) / 2);
         $y = is_numeric($yEnv)
             ? (float) $yEnv
-            : ($pageSize['height'] - $height - 24);
+            : ($pageSize['height'] - $boxHeight - 18);
 
         $margin = 5.0;
-        $maxX = max($margin, $pageSize['width'] - $margin - $width);
-        $maxY = max($margin, $pageSize['height'] - $margin - $height);
+        $maxX = max($margin, $pageSize['width'] - $margin - $boxWidth);
+        $maxY = max($margin, $pageSize['height'] - $margin - $boxHeight);
         $x = min(max($x, $margin), $maxX);
         $y = min(max($y, $margin), $maxY);
 
-        $pdf->Image($esignPath, $x, $y, $width, $height);
+        $drawX = $x + (($boxWidth - $width) / 2);
+        $drawY = $y + (($boxHeight - $height) / 2);
+
+        $pdf->Image($esignPath, $drawX, $drawY, $width, $height);
 
         return [
-            'x' => $x,
-            'y' => $y,
+            'x' => $drawX,
+            'y' => $drawY,
             'width' => $width,
             'height' => $height,
         ];
     }
 
+<<<<<<< HEAD
     private function resolveRegionalDirectorESignDimensions(string $esignPath): array
     {
         $maxWidth = (float) env('CERT_RD_ESIGN_WIDTH', 52);
@@ -1786,6 +1798,26 @@ class CertificateAdminController extends Controller
         return [
             round($sourceWidth * $scale, 2),
             round($sourceHeight * $scale, 2),
+=======
+    private function fitImageWithinBox(string $imagePath, float $boxWidth, float $boxHeight): array
+    {
+        $imageSize = @getimagesize($imagePath);
+        $nativeWidth = (float) ($imageSize[0] ?? 0);
+        $nativeHeight = (float) ($imageSize[1] ?? 0);
+
+        if ($nativeWidth <= 0 || $nativeHeight <= 0) {
+            return [$boxWidth, $boxHeight];
+        }
+
+        $scale = min($boxWidth / $nativeWidth, $boxHeight / $nativeHeight);
+        if ($scale <= 0 || !is_finite($scale)) {
+            return [$boxWidth, $boxHeight];
+        }
+
+        return [
+            max(0.1, $nativeWidth * $scale),
+            max(0.1, $nativeHeight * $scale),
+>>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
         ];
     }
 

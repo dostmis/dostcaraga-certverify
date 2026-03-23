@@ -52,18 +52,12 @@ Backups are written to `${BACKUP_TARGET_DIR:-./backups}` on the host:
 
 Default behavior:
 
-<<<<<<< HEAD
-- DB backup runs every 2 hours (`DB_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
-- app storage backup runs every 2 hours (`APP_STORAGE_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
+- DB backup runs every 2 hours (`DB_BACKUP_CRON_SCHEDULE="0 */2 * * *"`)
+- app storage backup runs every 2 hours (`APP_STORAGE_BACKUP_CRON_SCHEDULE="0 */2 * * *"`)
 - DB retention keeps only the latest 10 backup files (`DB_BACKUP_MAX_FILES=10`)
 - app storage retention keeps only the latest 10 archive files (`APP_STORAGE_BACKUP_MAX_FILES=10`)
 - backup filenames and logs use Philippine Time by default (`BACKUP_TIMEZONE=Asia/Manila`, `BACKUP_TZ_LABEL=PHT`)
 - both services run one backup when containers start (`DB_BACKUP_RUN_ON_START=true`, `APP_STORAGE_BACKUP_RUN_ON_START=true`)
-=======
-- runs every 2 hours (`DB_BACKUP_CRON_SCHEDULE="0 */2 * * *"`)
-- keeps only the latest 10 backup files (`DB_BACKUP_MAX_FILES=10`)
-- runs one backup when container starts (`DB_BACKUP_RUN_ON_START=true`)
->>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
 
 Optional GPG encryption:
 

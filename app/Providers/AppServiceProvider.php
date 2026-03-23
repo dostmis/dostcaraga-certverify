@@ -4,7 +4,6 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Str;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -21,20 +20,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-<<<<<<< HEAD
-        if ($this->shouldForceHttps()) {
-            URL::forceScheme('https');
-        }
-    }
-
-    private function shouldForceHttps(): bool
-    {
-        if (! app()->environment('production')) {
-            return false;
-        }
-
-        return Str::startsWith((string) config('app.url'), 'https://');
-=======
         if (app()->runningInConsole()) {
             return;
         }
@@ -47,6 +32,5 @@ class AppServiceProvider extends ServiceProvider
         if (! $isLocalHost && $appUrlScheme === 'https') {
             URL::forceScheme('https');
         }
->>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
     }
 }

@@ -1728,14 +1728,9 @@ class CertificateAdminController extends Controller
             return null;
         }
 
-<<<<<<< HEAD
-        [$width, $height] = $this->resolveRegionalDirectorESignDimensions($esignPath);
-        if ($width <= 0 || $height <= 0) {
-=======
         $boxWidth = (float) env('CERT_RD_ESIGN_WIDTH', 84);
         $boxHeight = (float) env('CERT_RD_ESIGN_HEIGHT', 28);
         if ($boxWidth <= 0 || $boxHeight <= 0) {
->>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
             return null;
         }
 
@@ -1770,35 +1765,6 @@ class CertificateAdminController extends Controller
         ];
     }
 
-<<<<<<< HEAD
-    private function resolveRegionalDirectorESignDimensions(string $esignPath): array
-    {
-        $maxWidth = (float) env('CERT_RD_ESIGN_WIDTH', 52);
-        $maxHeight = (float) env('CERT_RD_ESIGN_HEIGHT', 18);
-        if ($maxWidth <= 0 || $maxHeight <= 0) {
-            return [0.0, 0.0];
-        }
-
-        $imageSize = @getimagesize($esignPath);
-        if (!$imageSize) {
-            return [$maxWidth, $maxHeight];
-        }
-
-        $sourceWidth = (float) ($imageSize[0] ?? 0);
-        $sourceHeight = (float) ($imageSize[1] ?? 0);
-        if ($sourceWidth <= 0 || $sourceHeight <= 0) {
-            return [$maxWidth, $maxHeight];
-        }
-
-        $scale = min($maxWidth / $sourceWidth, $maxHeight / $sourceHeight);
-        if ($scale <= 0) {
-            return [$maxWidth, $maxHeight];
-        }
-
-        return [
-            round($sourceWidth * $scale, 2),
-            round($sourceHeight * $scale, 2),
-=======
     private function fitImageWithinBox(string $imagePath, float $boxWidth, float $boxHeight): array
     {
         $imageSize = @getimagesize($imagePath);
@@ -1817,7 +1783,6 @@ class CertificateAdminController extends Controller
         return [
             max(0.1, $nativeWidth * $scale),
             max(0.1, $nativeHeight * $scale),
->>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
         ];
     }
 

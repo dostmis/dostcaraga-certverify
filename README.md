@@ -43,19 +43,14 @@ Automated backups are handled by `db-backup` and `app-storage-backup`. They writ
 `${BACKUP_TARGET_DIR:-./backups}`, with database dumps in `database/` and storage archives in
 `app-storage/`.
 
-<<<<<<< HEAD
 Certificate templates, participant uploads, generated PDFs, and signatory images live in the Docker `app_storage`
 volume, not in Git. A SQL restore only restores database rows and file paths, not the actual uploaded files.
 
-- default DB schedule is every 2 hours (`DB_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
-- default app storage schedule is every 2 hours (`APP_STORAGE_BACKUP_CRON_SCHEDULE=0 */2 * * *`)
+- default DB schedule is every 2 hours (`DB_BACKUP_CRON_SCHEDULE="0 */2 * * *"`)
+- default app storage schedule is every 2 hours (`APP_STORAGE_BACKUP_CRON_SCHEDULE="0 */2 * * *"`)
 - retention keeps only latest 10 DB backup files (`DB_BACKUP_MAX_FILES=10`)
 - retention keeps only latest 10 storage backup files (`APP_STORAGE_BACKUP_MAX_FILES=10`)
 - backup filenames and logs use Philippine Time by default (`BACKUP_TIMEZONE=Asia/Manila`, `BACKUP_TZ_LABEL=PHT`)
-=======
-- default schedule is every 2 hours (`DB_BACKUP_CRON_SCHEDULE="0 */2 * * *"`)
-- retention keeps only latest 10 backup files (`DB_BACKUP_MAX_FILES=10`)
->>>>>>> c5e8d13 (Improve certificate UI and add backup scripts)
 - set `DB_BACKUP_GPG_ENABLED=true` to produce encrypted `.sql.gz.gpg` backups
 - use `DB_BACKUP_GPG_PASSPHRASE` (symmetric) or `DB_BACKUP_GPG_RECIPIENT` (public key)
 

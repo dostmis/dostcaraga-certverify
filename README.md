@@ -102,6 +102,12 @@ CONFIRM_RESTORE=YES DB_BACKUP_GPG_PASSPHRASE='your-strong-passphrase' DB_USERNAM
 ./scripts/backup-app-storage.sh ./app-storage.tar.gz
 ```
 
+- backup the current `public/storage` state:
+
+```bash
+./scripts/backup-public-storage.sh ./public-storage.tar.gz
+```
+
 - restore app storage files:
 
 ```bash
@@ -109,7 +115,13 @@ CONFIRM_RESTORE_STORAGE=YES ./scripts/restore-app-storage.sh ./app-storage.tar.g
 docker compose exec app php artisan certificates:migrate-private-storage
 ```
 
-- create a full portable clone of DB + storage:
+- restore the current `public/storage` state:
+
+```bash
+CONFIRM_RESTORE_PUBLIC_STORAGE=YES ./scripts/restore-public-storage.sh ./public-storage.tar.gz
+```
+
+- create a full portable clone of DB + `storage` + `public/storage`:
 
 ```bash
 ./scripts/backup-full-system.sh ./cert-verify_full-clone.tar.gz

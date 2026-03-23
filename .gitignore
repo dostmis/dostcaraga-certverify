@@ -27,6 +27,9 @@
 /backups
 /docker/backups
 /app-storage.tar.gz
+/app-storage_*.tar.gz
+/public-storage.tar.gz
+/public-storage_*.tar.gz
 /cert-verify_full-clone_*.tar.gz
 /db/*.log
 /db/*.sql.gz

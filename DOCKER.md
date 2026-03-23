@@ -132,6 +132,12 @@ Create a storage archive on the old server:
 ./scripts/backup-app-storage.sh ./app-storage.tar.gz
 ```
 
+Capture the current `public/storage` state too:
+
+```bash
+./scripts/backup-public-storage.sh ./public-storage.tar.gz
+```
+
 Copy `app-storage.tar.gz` to the new server, then restore it:
 
 ```bash
@@ -139,11 +145,17 @@ CONFIRM_RESTORE_STORAGE=YES ./scripts/restore-app-storage.sh ./app-storage.tar.g
 docker compose exec app php artisan certificates:migrate-private-storage
 ```
 
+If you also exported `public/storage`, restore it after the storage volume:
+
+```bash
+CONFIRM_RESTORE_PUBLIC_STORAGE=YES ./scripts/restore-public-storage.sh ./public-storage.tar.gz
+```
+
 Do not rely on GitHub for live generated PDFs or uploaded participant/template files. They are runtime storage
 artifacts and may contain personal data. Git also cannot see Docker volume contents unless you explicitly export
 them back into the repository first.
 
-If you want the whole verifier system in one portable backup, create a combined bundle:
+If you want the whole verifier system in one portable backup, create a combined bundle with the database, `storage`, and `public/storage`:
 
 ```bash
 ./scripts/backup-full-system.sh ./cert-verify_full-clone.tar.gz

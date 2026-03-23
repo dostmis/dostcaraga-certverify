@@ -39,6 +39,10 @@ fi
 CONFIRM_RESTORE=YES "${SCRIPT_DIR}/restore-db-backup.sh" "${TMP_DIR}/db.sql.gz"
 CONFIRM_RESTORE_STORAGE=YES "${SCRIPT_DIR}/restore-app-storage.sh" "${TMP_DIR}/app-storage.tar.gz"
 
+if [[ -f "${TMP_DIR}/public-storage.tar.gz" ]]; then
+    CONFIRM_RESTORE_PUBLIC_STORAGE=YES "${SCRIPT_DIR}/restore-public-storage.sh" "${TMP_DIR}/public-storage.tar.gz"
+fi
+
 if docker compose version >/dev/null 2>&1; then
     COMPOSE_CMD=(docker compose)
 elif command -v docker-compose >/dev/null 2>&1; then

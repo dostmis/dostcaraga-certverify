@@ -3,7 +3,7 @@ set -euo pipefail
 
 BACKUP_TIMEZONE="${BACKUP_TIMEZONE:-Asia/Manila}"
 BACKUP_TZ_LABEL="${BACKUP_TZ_LABEL:-PHT}"
-OUTPUT_FILE="${1:-./app-storage_$(TZ="$BACKUP_TIMEZONE" date +%Y%m%dT%H%M%S)${BACKUP_TZ_LABEL}.tar.gz}"
+OUTPUT_FILE="${1:-./public-storage_$(TZ="$BACKUP_TIMEZONE" date +%Y%m%dT%H%M%S)${BACKUP_TZ_LABEL}.tar.gz}"
 OUTPUT_DIR="$(dirname "$OUTPUT_FILE")"
 OUTPUT_BASENAME="$(basename "$OUTPUT_FILE")"
 CONTAINER_ARCHIVE="/tmp/${OUTPUT_BASENAME}"
@@ -31,12 +31,18 @@ fi
 set -eu
 archive="$1"
 
+cd /var/www/html/public
+
+if [ ! -e storage ] && [ ! -L storage ]; then
+    echo "public/storage does not exist in the app container." >&2
+    exit 1
+fi
+
 rm -f "$archive"
-cd /var/www/html
 tar -czf "$archive" storage
-' backup-app-storage "$CONTAINER_ARCHIVE"
+' backup-public-storage "$CONTAINER_ARCHIVE"
 
 docker cp "${APP_CONTAINER_ID}:${CONTAINER_ARCHIVE}" "$OUTPUT_FILE"
-"${COMPOSE_CMD[@]}" exec -T app sh -lc 'rm -f "$1"' cleanup-app-storage "$CONTAINER_ARCHIVE"
+"${COMPOSE_CMD[@]}" exec -T app sh -lc 'rm -f "$1"' cleanup-public-storage "$CONTAINER_ARCHIVE"
 
-echo "Created storage volume backup at $OUTPUT_FILE"
+echo "Created public/storage backup at $OUTPUT_FILE"

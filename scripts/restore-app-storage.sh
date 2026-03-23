@@ -43,9 +43,25 @@ docker cp "$ARCHIVE_FILE" "${APP_CONTAINER_ID}:${CONTAINER_ARCHIVE}"
 "${COMPOSE_CMD[@]}" exec -T app sh -lc '
 set -eu
 archive="$1"
+first_entry="$(tar -tzf "$archive" | head -n 1 || true)"
+
+if [ -z "$first_entry" ]; then
+    echo "Storage archive is empty: $archive" >&2
+    exit 1
+fi
 
 mkdir -p /var/www/html/storage
-tar -xzf "$archive" -C /var/www/html/storage
+find /var/www/html/storage -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+case "$first_entry" in
+    storage|storage/*)
+        tar -xzf "$archive" -C /var/www/html
+        ;;
+    *)
+        tar -xzf "$archive" -C /var/www/html/storage
+        ;;
+esac
+
 chown -R www-data:www-data /var/www/html/storage
 rm -f "$archive"
 ' restore-app-storage "$CONTAINER_ARCHIVE"

@@ -19,6 +19,13 @@
           </div>
         </div>
       @endif
+      @if (session('error'))
+        <div class="px-6 pt-6">
+          <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-800">
+            <div class="font-bold">{{ session('error') }}</div>
+          </div>
+        </div>
+      @endif
 
       <div class="px-6 pt-6">
         <div class="flex flex-wrap items-center gap-2 text-sm font-bold">
@@ -72,7 +79,20 @@
                   <td class="py-3 pr-4 text-slate-700 whitespace-nowrap">{{ $user->username }}</td>
                   <td class="py-3 pr-4 text-slate-700 whitespace-nowrap">{{ $user->email }}</td>
                   <td class="py-3 pr-4 text-slate-700 whitespace-nowrap">
-                    {{ str_replace('_', ' ', strtoupper($user->role ?? 'organizer')) }}
+                    <form method="POST" action="{{ route('admin.users.role', ['id' => $user->id]) }}" class="flex items-center gap-2">
+                      @csrf
+                      <select name="role" class="rounded-lg border-slate-300 text-xs font-semibold" @disabled((int) auth()->id() === (int) $user->id)>
+                        @foreach (($roles ?? []) as $roleOption)
+                          <option value="{{ $roleOption }}" @selected(($user->role ?? 'organizer') === $roleOption)>{{ str_replace('_', ' ', strtoupper($roleOption)) }}</option>
+                        @endforeach
+                      </select>
+                      <button
+                        class="inline-flex items-center rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        @disabled((int) auth()->id() === (int) $user->id)
+                      >
+                        Save
+                      </button>
+                    </form>
                   </td>
                   <td class="py-3 pr-4">
                     @php

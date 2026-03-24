@@ -1,0 +1,16 @@
+[Unit]
+Description=CertVerify Laravel Queue Worker
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/certverify
+ExecStart=/usr/bin/php /var/www/certverify/artisan queue:work --sleep=3 --tries=3 --timeout=120 --max-time=3600
+ExecReload=/usr/bin/php /var/www/certverify/artisan queue:restart
+
+[Install]
+WantedBy=multi-user.target

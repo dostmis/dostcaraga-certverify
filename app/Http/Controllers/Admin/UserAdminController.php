@@ -65,4 +65,24 @@ class UserAdminController extends Controller
 
         return back()->with('success', 'User rejected.');
     }
+
+    public function updateRole(Request $request, int $id): RedirectResponse
+    {
+        $data = $request->validate([
+            'role' => ['required', Rule::in(User::roles())],
+        ]);
+
+        $user = User::findOrFail($id);
+
+        if ((int) $request->user()->id === (int) $user->id) {
+            return back()->with('error', 'You cannot change your own role from this page.');
+        }
+
+        $user->update([
+            'role' => $data['role'],
+            'is_admin' => $data['role'] === User::ROLE_REGIONAL_DIRECTOR,
+        ]);
+
+        return back()->with('success', 'User role updated successfully.');
+    }
 }

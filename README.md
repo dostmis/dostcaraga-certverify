@@ -2,6 +2,18 @@
 
 Laravel-based certificate verification and processing system.
 
+## Production Bare-Metal Deployment (Recommended)
+
+For a non-Docker production server behind Cloudflare Tunnel (`certify.dostcaraga.ph`), follow:
+
+- [BARE_METAL.md](BARE_METAL.md)
+
+One-command service bootstrap (auto-start after reboot, no `php artisan serve`):
+
+```bash
+sudo ./scripts/setup-bare-metal-services.sh
+```
+
 ## Production Docker Deployment
 
 This repository includes a production-oriented Docker stack with:

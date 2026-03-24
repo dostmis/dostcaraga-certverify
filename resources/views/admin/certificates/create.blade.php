@@ -446,8 +446,30 @@
                       {{ $project['name'] }}
                     </option>
                   @endforeach
+                  @if (old('dost_project') === 'Others')
+                    <option
+                      value="Others"
+                      data-code=""
+                      data-program-prefix="SSCP"
+                      selected
+                    >
+                      {{ $customDostProjectOptionLabel ?? 'Others, please specify' }}
+                    </option>
+                  @endif
                 </select>
               </div>
+            </div>
+
+            <div class="row" id="dostProjectOtherRow" style="{{ old('dost_program') === ($sscpProgramLabel ?? null) && old('dost_project') === 'Others' ? '' : 'display:none;' }}">
+              <label>If Others, please specify DOST Project</label>
+              <input
+                type="text"
+                id="dostProjectOtherInput"
+                name="dost_project_other"
+                value="{{ old('dost_project_other') }}"
+                maxlength="255"
+                {{ old('dost_program') === ($sscpProgramLabel ?? null) && old('dost_project') === 'Others' ? 'required' : '' }}
+              >
             </div>
 
             <div class="row" id="dostProgramOtherRow" style="{{ old('dost_program') === 'Others' ? '' : 'display:none;' }}">
@@ -555,7 +577,7 @@
               <label>Import Participants (CSV/XLSX)</label>
               <input type="file" id="participantsFile" name="participants_file" accept=".csv,.xlsx" required>
               <div class="muted">
-                Participants are loaded only from this file.
+                Please do Participant Intake first and export csv or xlsx file, then upload here.
                 <br>
                 Headers supported:
                 <code>participant_name</code> <code>participant name</code> <code>name</code>
@@ -598,6 +620,8 @@
     const trainingBudgetLabel = document.getElementById('trainingBudgetLabel');
     const dostProjectLabel = document.getElementById('dostProjectLabel');
     const dostProjectSelect = document.getElementById('dostProjectSelect');
+    const dostProjectOtherRow = document.getElementById('dostProjectOtherRow');
+    const dostProjectOtherInput = document.getElementById('dostProjectOtherInput');
     const sourceOfFundsSelect = document.getElementById('sourceOfFundsSelect');
     const projectCodeRow = document.getElementById('projectCodeRow');
     const projectCodeInput = document.getElementById('projectCodeInput');
@@ -608,7 +632,11 @@
     const dostProgramProjectPrefixes = @json($dostProgramProjectPrefixes ?? []);
     const setupProgramLabel = @json($setupProgramLabel ?? null);
     const setupOfficeProvinces = @json($setupOfficeProvinces ?? []);
+    const sscpProgramLabel = @json($sscpProgramLabel ?? null);
     const sourceOfFundsOptions = @json($sourceOfFundsOptions ?? []);
+    const customDostProjectOptionLabel = @json($customDostProjectOptionLabel ?? 'Others, please specify');
+    const customDostProjectOptionValue = 'Others';
+    let persistedDostProjectValue = @json(old('dost_project', ''));
     const notApplicableValue = 'Not Applicable';
     const allDostProjectOptions = dostProjectSelect
       ? Array.from(dostProjectSelect.options)
@@ -627,6 +655,12 @@
         code: notApplicableValue,
         programPrefix: '',
       };
+    const customDostProjectOption = {
+      value: customDostProjectOptionValue,
+      label: customDostProjectOptionLabel,
+      code: '',
+      programPrefix: 'SSCP',
+    };
 
     const toggleTopicOther = () => {
       if (!topicSelect || !topicOtherRow || !topicOtherInput) {
@@ -732,6 +766,19 @@
       toggleDostProgramOther();
     }
 
+    const toggleDostProjectOther = () => {
+      if (!dostProjectSelect || !dostProjectOtherRow || !dostProjectOtherInput) {
+        return;
+      }
+
+      const isCustomProject = dostProgramSelect
+        && dostProgramSelect.value === sscpProgramLabel
+        && dostProjectSelect.value === customDostProjectOptionValue;
+
+      dostProjectOtherRow.style.display = isCustomProject ? '' : 'none';
+      dostProjectOtherInput.required = isCustomProject;
+    };
+
     const syncActivityLabels = () => {
       if (!trainingHoursLabel && !trainingBudgetLabel) {
         return;
@@ -763,6 +810,8 @@
       const selectedOption = dostProjectSelect.options[dostProjectSelect.selectedIndex];
       const code = selectedOption ? (selectedOption.dataset.code || '') : '';
       projectCodeInput.value = code;
+      persistedDostProjectValue = dostProjectSelect.value || persistedDostProjectValue;
+      toggleDostProjectOther();
     };
 
     const buildDostProjectOptions = (availableOptions, placeholderText, previousValue, lockSelection = false) => {
@@ -870,9 +919,10 @@
       }
 
       const selectedProgram = dostProgramSelect.value;
-      const previousValue = dostProjectSelect.value;
+      const previousValue = dostProjectSelect.value || persistedDostProjectValue;
       const isSetup = selectedProgram === setupProgramLabel;
       const isNationalRegular = selectedProgram === nationalRegularProgramLabel;
+      const isSscp = selectedProgram === sscpProgramLabel;
 
       if (dostProjectLabel) {
         dostProjectLabel.textContent = isSetup ? 'DOST Office/Province' : 'DOST Project';
@@ -912,8 +962,11 @@
       const availableOptions = matchingOptions.length > 0
         ? matchingOptions
         : allDostProjectOptions;
+      const availableProjectOptions = isSscp
+        ? [...availableOptions, customDostProjectOption]
+        : availableOptions;
 
-      buildDostProjectOptions(availableOptions, 'Select DOST Project', previousValue);
+      buildDostProjectOptions(availableProjectOptions, 'Select DOST Project', previousValue);
 
       syncProjectCode();
     };

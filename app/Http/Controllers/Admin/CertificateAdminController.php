@@ -29,6 +29,7 @@ class CertificateAdminController extends Controller
     private const STANDARD_NAME_FONT_SIZE = 45.0;
     private const STANDARD_NAME_FONT_FAMILY = 'Times';
     private const NOT_APPLICABLE = 'Not Applicable';
+    private const CUSTOM_DOST_PROJECT_OPTION = 'Others';
 
     public function index(Request $request)
     {
@@ -250,6 +251,8 @@ class CertificateAdminController extends Controller
         $dostProgramProjectPrefixes = $this->dostProgramProjectPrefixes();
         $setupProgramLabel = $this->setupProgramLabel();
         $setupOfficeProvinces = $this->setupOfficeProvinces();
+        $sscpProgramLabel = $this->sscpProgramLabel();
+        $customDostProjectOptionLabel = $this->customDostProjectOptionLabel();
         $pillars = $this->pillars();
         $isRegionalDirector = $this->isRegionalDirector($user);
 
@@ -268,6 +271,8 @@ class CertificateAdminController extends Controller
             'dostProgramProjectPrefixes',
             'setupProgramLabel',
             'setupOfficeProvinces',
+            'sscpProgramLabel',
+            'customDostProjectOptionLabel',
             'pillars',
             'isRegionalDirector'
         ));
@@ -337,7 +342,7 @@ class CertificateAdminController extends Controller
             $this->nationalRegularProgramLabel(),
             'LGIA (Local Grants-in-Aid Program)',
             'CEST (Community Empowerment through Science and Technology Program)',
-            'SSCP (Smart and Sustainable Communities Program)',
+            $this->sscpProgramLabel(),
             $this->setupProgramLabel(),
             'Others',
         ];
@@ -373,8 +378,18 @@ class CertificateAdminController extends Controller
             $this->nationalRegularProgramLabel() => $this->regularFundsLabel(),
             'LGIA (Local Grants-in-Aid Program)' => $this->projectFundsLabel(),
             'CEST (Community Empowerment through Science and Technology Program)' => $this->projectFundsLabel(),
-            'SSCP (Smart and Sustainable Communities Program)' => $this->projectFundsLabel(),
+            $this->sscpProgramLabel() => $this->projectFundsLabel(),
         ];
+    }
+
+    private function sscpProgramLabel(): string
+    {
+        return 'SSCP (Smart and Sustainable Communities Program)';
+    }
+
+    private function customDostProjectOptionLabel(): string
+    {
+        return 'Others, please specify';
     }
 
     private function setupProgramLabel(): string
@@ -399,7 +414,7 @@ class CertificateAdminController extends Controller
         return [
             'LGIA (Local Grants-in-Aid Program)' => 'LGIA',
             'CEST (Community Empowerment through Science and Technology Program)' => 'CEST',
-            'SSCP (Smart and Sustainable Communities Program)' => 'SSCP',
+            $this->sscpProgramLabel() => 'SSCP',
         ];
     }
 
@@ -487,6 +502,11 @@ class CertificateAdminController extends Controller
     {
         return in_array($program, array_keys($this->automaticSourceOfFundsByProgram()), true)
             && !$this->isNationalRegularProgram($program);
+    }
+
+    private function isSscpProgram(string $program): bool
+    {
+        return $program === $this->sscpProgramLabel();
     }
 
     private function dostProjectCodeMap(): array
@@ -837,7 +857,12 @@ class CertificateAdminController extends Controller
             'dost_program' => ['required', Rule::in($this->dostPrograms())],
             'dost_program_other' => ['exclude_unless:dost_program,Others', 'required', 'string', 'max:255', 'regex:/.*\S.*/'],
             'pillar' => ['required', Rule::in($this->pillars())],
-            'dost_project' => ['required', Rule::in(array_merge(array_keys($this->dostProjectCodeMap()), $this->setupOfficeProvinces()))],
+            'dost_project' => ['required', Rule::in(array_merge(
+                array_keys($this->dostProjectCodeMap()),
+                $this->setupOfficeProvinces(),
+                [self::CUSTOM_DOST_PROJECT_OPTION]
+            ))],
+            'dost_project_other' => ['exclude_unless:dost_project,' . self::CUSTOM_DOST_PROJECT_OPTION, 'required', 'string', 'max:255', 'regex:/.*\S.*/'],
             'source_of_funds' => ['required', Rule::in($this->sourceOfFundsOptions())],
             'training_budget' => ['nullable', 'numeric', 'min:0'],
             'expected_number_of_participants' => ['nullable', 'integer', 'min:1'],
@@ -872,22 +897,35 @@ class CertificateAdminController extends Controller
             $data['dost_project'] = self::NOT_APPLICABLE;
             $data['project_code'] = self::NOT_APPLICABLE;
         } else {
+            $usesCustomDostProject = $data['dost_project'] === self::CUSTOM_DOST_PROJECT_OPTION;
+
+            if ($usesCustomDostProject && !$this->isSscpProgram($data['dost_program'])) {
+                throw ValidationException::withMessages([
+                    'dost_project' => 'Others, please specify is only available for SSCP.',
+                ]);
+            }
+
             if (in_array($data['dost_project'], $this->setupOfficeProvinces(), true)) {
                 throw ValidationException::withMessages([
                     'dost_project' => 'Please select a valid DOST Project.',
                 ]);
             }
-            if (!$this->isDostProjectAllowedForProgram($data['dost_program'], $data['dost_project'])) {
-                throw ValidationException::withMessages([
-                    'dost_project' => 'Please select a DOST Project under the chosen DOST Program.',
-                ]);
-            }
             $data['setup_office_province'] = self::NOT_APPLICABLE;
-            $data['project_code'] = $this->dostProjectCodeMap()[$data['dost_project']] ?? null;
-            if (!$data['project_code']) {
-                throw ValidationException::withMessages([
-                    'dost_project' => 'Please select a valid DOST Project.',
-                ]);
+            if ($usesCustomDostProject) {
+                $data['dost_project'] = trim((string) $data['dost_project_other']);
+                $data['project_code'] = null;
+            } else {
+                if (!$this->isDostProjectAllowedForProgram($data['dost_program'], $data['dost_project'])) {
+                    throw ValidationException::withMessages([
+                        'dost_project' => 'Please select a DOST Project under the chosen DOST Program.',
+                    ]);
+                }
+                $data['project_code'] = $this->dostProjectCodeMap()[$data['dost_project']] ?? null;
+                if (!$data['project_code']) {
+                    throw ValidationException::withMessages([
+                        'dost_project' => 'Please select a valid DOST Project.',
+                    ]);
+                }
             }
             if ($this->isProjectFundProgram($data['dost_program'])) {
                 $data['source_of_funds'] = $this->projectFundsLabel();

@@ -1,0 +1,16 @@
+[Unit]
+Description=Cloudflare Tunnel for CertVerify
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cloudflared
+Group=cloudflared
+EnvironmentFile=/etc/default/cloudflared-certverify
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=CertVerify Laravel Scheduler
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/certverify
+ExecStart=/usr/bin/php /var/www/certverify/artisan schedule:work
+
+[Install]
+WantedBy=multi-user.target

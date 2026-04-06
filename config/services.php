@@ -35,4 +35,23 @@ return [
         ],
     ],
 
+    'facebook_messenger' => [
+        'enabled' => env('FB_MESSENGER_ENABLED', false),
+        'notify_on_every_endorsement' => env('FB_MESSENGER_NOTIFY_ON_EVERY_ENDORSE', true),
+        'bulk_threshold' => (int) env('FB_MESSENGER_BULK_THRESHOLD', 50),
+        'page_access_token' => env('FB_MESSENGER_PAGE_ACCESS_TOKEN'),
+        'rd_psid' => env('FB_MESSENGER_RD_PSID'),
+        'approvals_url' => env('FB_MESSENGER_APPROVALS_URL'),
+        'graph_api_version' => env('FB_MESSENGER_GRAPH_API_VERSION', 'v22.0'),
+    ],
+
+    'telegram_bot' => [
+        'enabled' => env('TG_BOT_ENABLED', false),
+        'notify_on_every_endorsement' => env('TG_NOTIFY_ON_EVERY_ENDORSE', true),
+        'bulk_threshold' => (int) env('TG_BULK_THRESHOLD', 50),
+        'bot_token' => env('TG_BOT_TOKEN'),
+        'rd_chat_id' => env('TG_RD_CHAT_ID'),
+        'webhook_secret' => env('TG_WEBHOOK_SECRET'),
+    ],
+
 ];

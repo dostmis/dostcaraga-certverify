@@ -3,7 +3,6 @@
     $isGrouped = ($group ?? '') === 'training';
     $isRegionalDirector = (bool) ($isRegionalDirector ?? (auth()->user() && auth()->user()->isRegionalDirector()));
     $canEndorseCertificates = (bool) ($canEndorseCertificates ?? false);
-    $endorsementRequests = $endorsementRequests ?? collect();
     $pendingEndorsementsCount = (int) ($pendingEndorsementsCount ?? 0);
   @endphp
 
@@ -641,13 +640,13 @@
           @endif
           <a href="{{ route('admin.participant-intakes.index') }}" class="cert-btn cert-btn-light">Intakes</a>
           @if ($isRegionalDirector)
-            <a href="{{ route('admin.certs.approvals') }}" class="cert-btn cert-btn-light">Phone Mode</a>
+            <a href="{{ route('admin.certs.approvals') }}" class="cert-btn cert-btn-light">Endorsed Queue</a>
           @endif
           @if ($canEndorseCertificates || $isRegionalDirector)
             <a href="{{ route('admin.certs.create') }}" class="cert-btn cert-btn-white">{{ $isRegionalDirector ? '+ Create (RD)' : '+ Create & Endorse' }}</a>
           @endif
           @if ($isRegionalDirector)
-            <span class="cert-btn cert-btn-light">Endorsed Queue: {{ number_format($pendingEndorsementsCount) }}</span>
+            <a href="{{ route('admin.certs.approvals') }}" class="cert-btn cert-btn-light">Endorsed Queue: {{ number_format($pendingEndorsementsCount) }}</a>
           @endif
           @if ($isRegionalDirector)
             <a href="{{ route('admin.users.index') }}" class="cert-btn cert-btn-light">Users</a>
@@ -705,116 +704,11 @@
           <div class="cert-tabs-row">
             <div class="cert-tabs">
               <a href="{{ route('admin.certs.index', ['q' => $search]) }}" class="cert-tab {{ $isGrouped ? '' : 'active' }}">All certificates</a>
-              <a href="{{ route('admin.certs.index', ['group' => 'training', 'q' => $search]) }}" class="cert-tab {{ $isGrouped ? 'active' : '' }}">Group by training</a>
+              <a href="{{ route('admin.certs.index', ['group' => 'training', 'q' => $search]) }}" class="cert-tab {{ $isGrouped ? 'active' : '' }}">Group by activity</a>
             </div>
             @if (!empty($search))
               <div class="cert-result">Showing results for <strong>{{ $search }}</strong></div>
             @endif
-          </div>
-        </section>
-
-        <section class="cert-table-wrap" style="margin-top:14px;">
-          <div class="cert-table-scroll">
-            <table class="cert-table">
-              <thead>
-                <tr>
-                  <th>Endorsed Certificate Package</th>
-                  <th>Training Date</th>
-                  <th>Submitted By</th>
-                  <th>Recipient Type</th>
-                  <th>No. of Participants</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                @forelse ($endorsementRequests as $requestItem)
-                  @php
-                    $payload = is_array($requestItem->payload) ? $requestItem->payload : [];
-                    $from = $payload['training_date_from'] ?? null;
-                    $to = $payload['training_date_to'] ?? $from;
-                    $dateRange = $from
-                      ? ($from === $to ? $from : ($from . ' to ' . $to))
-                      : '-';
-                    $status = strtolower((string) $requestItem->status);
-                    $statusClass = match($status) {
-                      'endorsed' => 'status-endorsed',
-                      'rd_approved' => 'status-rd-approved',
-                      'rd_rejected' => 'status-rd-rejected',
-                      default => 'status-default',
-                    };
-                  @endphp
-                  @php
-                    $participantsReviewed = (bool) session('cert_endorsements.participants_reviewed.' . $requestItem->id, false);
-                  @endphp
-                  <tr>
-                    <td>
-                      <div class="cert-code">{{ $payload['training_title'] ?? 'Untitled Training' }}</div>
-                      <div class="cert-muted">{{ $payload['issuing_office'] ?? 'Unspecified Office' }}</div>
-                      @if ($isRegionalDirector)
-                        <div class="cert-muted" style="margin-top:4px;">
-                          First participant: {{ $requestItem->first_participant_name ?? 'Unavailable' }}
-                        </div>
-                      @endif
-                    </td>
-                    <td class="cert-td-now">{{ $dateRange }}</td>
-                    <td class="cert-td-now">
-                      {{ $requestItem->submitter?->name ?? ('User #' . ($requestItem->submitted_by ?? 'N/A')) }}
-                    </td>
-                    <td class="cert-td-now">{{ $payload['recipient_type'] ?? '-' }}</td>
-                    <td class="cert-td-now">{{ number_format((int) ($requestItem->participants_count ?? 0)) }}</td>
-                    <td>
-                      <span class="cert-status {{ $statusClass }}">{{ strtoupper(str_replace('_', ' ', $requestItem->status)) }}</span>
-                      @if (!empty($requestItem->rejection_reason))
-                        <div class="cert-muted" style="margin-top:6px;max-width:280px;">Reason: {{ $requestItem->rejection_reason }}</div>
-                      @endif
-                    </td>
-                    <td>
-                      <div class="cert-link-row">
-                        @if ($isRegionalDirector && !empty($requestItem->template_pdf_path))
-                          <a class="cert-mini-btn cert-mini-verify" target="_blank" rel="noopener" href="{{ route('admin.certs.endorsements.template.view', ['id' => $requestItem->id]) }}">
-                            Uploaded PDF
-                          </a>
-                        @endif
-                        @if ($isRegionalDirector && !empty($requestItem->template_pdf_path) && !empty($requestItem->participants_file_path))
-                          <a class="cert-mini-btn cert-mini-pdf" target="_blank" rel="noopener" href="{{ route('admin.certs.endorsements.preview', ['id' => $requestItem->id]) }}">
-                            Preview PDF
-                          </a>
-                        @endif
-                        @if ($isRegionalDirector && !empty($requestItem->participants_file_path))
-                          <a class="cert-mini-btn cert-mini-verify" target="_blank" rel="noopener" href="{{ route('admin.certs.endorsements.participants.download', ['id' => $requestItem->id]) }}">
-                            Download Participants
-                          </a>
-                        @endif
-                        @if ($isRegionalDirector && $requestItem->status === 'endorsed')
-                          <span class="cert-muted">
-                            {{ $participantsReviewed ? 'Participants reviewed' : 'Review participants before approval' }}
-                          </span>
-                          <form method="POST" action="{{ route('admin.certs.endorsements.approve', ['id' => $requestItem->id]) }}" class="cert-inline-form" onsubmit="return confirm('Are you sure you want to approve this certificate package and generate the certificates?')">
-                            @csrf
-                            <button type="submit" class="cert-mini-btn cert-mini-approve">Approve & Generate</button>
-                          </form>
-                          <form method="POST" action="{{ route('admin.certs.endorsements.reject', ['id' => $requestItem->id]) }}" class="cert-inline-form" onsubmit="return confirm('Reject this endorsement request?')">
-                            @csrf
-                            <button type="submit" class="cert-mini-btn cert-mini-reject">Reject</button>
-                          </form>
-                        @elseif ($requestItem->status === 'rd_approved')
-                          <span class="cert-muted">Generated: {{ number_format((int) ($requestItem->generated_count ?? 0)) }}</span>
-                        @else
-                          <span class="cert-muted">Awaiting RD action</span>
-                        @endif
-                      </div>
-                    </td>
-                  </tr>
-                @empty
-                  <tr>
-                    <td colspan="7" class="cert-empty">
-                      {{ $isRegionalDirector ? 'No endorsed certificate packages pending review.' : 'You have no endorsed certificate packages yet.' }}
-                    </td>
-                  </tr>
-                @endforelse
-              </tbody>
-            </table>
           </div>
         </section>
 
@@ -826,9 +720,9 @@
           @endphp
           <section class="cert-stats">
             <article class="cert-stat">
-              <h3>Training Groups</h3>
+              <h3>Activity Groups</h3>
               <strong>{{ number_format($groups->total()) }}</strong>
-              <p>All grouped training batches</p>
+              <p>All grouped activity batches</p>
             </article>
             <article class="cert-stat blue">
               <h3>Certificates on this page</h3>
@@ -872,7 +766,7 @@
               <table class="cert-table">
                 <thead>
                   <tr>
-                    <th>Training</th>
+                    <th>Activity</th>
                     <th>Date</th>
                     <th>Date created</th>
                     <th>Time created</th>
@@ -931,8 +825,8 @@
                 <thead>
                   <tr>
                     <th>Code</th>
-                    <th>Participant</th>
-                    <th>Training</th>
+                    <th>Recipient</th>
+                    <th>Activity</th>
                     <th>Date</th>
                     <th>Office</th>
                     <th>Status</th>

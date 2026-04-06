@@ -184,6 +184,25 @@ Create backup bundle:
 ./scripts/backup-bare-metal-data.sh
 ```
 
+Send the bundle directly to an offsite cloud server over SSH:
+
+```bash
+OFFSITE_BACKUP_ENABLED=true \
+OFFSITE_BACKUP_METHOD=rsync \
+OFFSITE_BACKUP_HOST=203.0.113.10 \
+OFFSITE_BACKUP_USER=backupuser \
+OFFSITE_BACKUP_PATH=/srv/backups/certverify \
+OFFSITE_BACKUP_SSH_KEY=/home/talinoserver/.ssh/offsite_backup_ed25519 \
+./scripts/backup-bare-metal-data.sh
+```
+
+Notes:
+
+- `OFFSITE_BACKUP_METHOD` supports `rsync` or `scp`
+- `OFFSITE_BACKUP_KEEP_LOCAL=true` keeps a local copy after upload
+- `OFFSITE_BACKUP_PORT` defaults to `22`
+- the remote server must already accept your SSH key login
+
 Restore bundle:
 
 ```bash

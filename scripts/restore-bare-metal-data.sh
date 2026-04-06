@@ -134,7 +134,7 @@ if [[ "${PUBLIC_STORAGE_MODE}" == "directory" ]]; then
     fi
 
     tar -xzf "${TMP_DIR}/public-storage.tar.gz" -C "${PROJECT_DIR}"
-else
+elif [[ "${PUBLIC_STORAGE_MODE}" == "symlink" ]]; then
     php artisan storage:link --force >/dev/null 2>&1
 fi
 
@@ -151,6 +151,8 @@ echo "Database restored to ${DB_DATABASE} on ${DB_HOST}:${DB_PORT}"
 echo "storage/ restored under ${PROJECT_DIR}/storage"
 if [[ "${PUBLIC_STORAGE_MODE}" == "directory" ]]; then
     echo "public/storage restored as a real directory"
-else
+elif [[ "${PUBLIC_STORAGE_MODE}" == "symlink" ]]; then
     echo "public/storage recreated as a symlink"
+else
+    echo "public/storage was absent in the backup and was left absent"
 fi

@@ -12,6 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: env('TRUSTED_PROXIES'));
+        $middleware->validateCsrfTokens(except: [
+            'webhooks/telegram/*',
+        ]);
 
         $middleware->alias([
             'admin' => \App\Http\Middleware\AdminOnly::class,

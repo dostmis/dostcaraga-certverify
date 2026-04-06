@@ -55,7 +55,23 @@ class CertificateCustomDostProjectTest extends TestCase
         }
     }
 
-    private function makeRequest(array $overrides = []): Request
+    public function test_windows_1252_csv_names_are_normalized_to_utf8(): void
+    {
+        $controller = app(CertificateAdminController::class);
+        $method = new ReflectionMethod($controller, 'validatedCertificatePayload');
+        $method->setAccessible(true);
+
+        [, $participants] = $method->invoke($controller, $this->makeRequest(
+            participantsCsv: "name\nCherie S. De La Pe" . "\xF1" . "a\n"
+        ));
+
+        $this->assertCount(1, $participants);
+        $this->assertSame('Cherie S. De La Pena', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $participants[0]['name']));
+        $this->assertSame('Cherie S. De La Pe' . "\xC3\xB1" . 'a', $participants[0]['name']);
+        $this->assertTrue(mb_check_encoding($participants[0]['name'], 'UTF-8'));
+    }
+
+    private function makeRequest(array $overrides = [], ?string $participantsCsv = null): Request
     {
         $payload = array_merge([
             'training_title' => 'Community Innovation Workshop',
@@ -75,9 +91,10 @@ class CertificateCustomDostProjectTest extends TestCase
         ], $overrides);
 
         $request = Request::create('/admin/certificates/preview', 'POST', $payload);
+        $participantsCsv ??= "name\nJuan Dela Cruz\n";
         $request->files->set('participants_file', UploadedFile::fake()->createWithContent(
             'participants.csv',
-            "name\nJuan Dela Cruz\n"
+            $participantsCsv
         ));
         $request->files->set('certificate_pdf_shared', UploadedFile::fake()->createWithContent(
             'template.pdf',

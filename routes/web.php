@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\ParticipantIntakeAdminController;
 use App\Http\Controllers\Admin\UserAdminController;
 use App\Http\Controllers\CertificatePublicController;
 use App\Http\Controllers\ParticipantIntakeController;
+use App\Http\Controllers\TelegramWebhookController;
 use Illuminate\Support\Facades\File;
 
 
@@ -90,6 +91,9 @@ Route::get('/participant-intake/{token}', [ParticipantIntakeController::class, '
 Route::post('/participant-intake/{token}', [ParticipantIntakeController::class, 'store'])
     ->middleware('throttle:10,1')
     ->name('participant.intake.submit');
+
+Route::post('/webhooks/telegram/{secret}', TelegramWebhookController::class)
+    ->name('webhooks.telegram');
 
 Route::get('/app/{any?}', function () {
     return File::get(public_path('app/index.html'));

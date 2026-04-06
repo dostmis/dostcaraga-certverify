@@ -1,4 +1,4 @@
-<x-admin-layout title="RD Phone Mode">
+<x-admin-layout title="Endorsed Queue">
   <style>
     .rda-page {
       width: 100%;
@@ -423,6 +423,37 @@
       font-weight: 700;
     }
 
+    .rda-footer {
+      margin-top: 14px;
+      border: 1px solid #dbe5ef;
+      border-radius: 16px;
+      background: #f8fbff;
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .rda-footer-text {
+      font-size: 13px;
+      color: #64748b;
+      font-weight: 700;
+    }
+
+    .rda-footer-text strong {
+      color: #0f172a;
+      font-weight: 900;
+    }
+
+    .rda-pagination nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
     .rda-recent-grid {
       display: grid;
       gap: 10px;
@@ -465,14 +496,14 @@
 
   <div class="rda-page">
     <header class="rda-hero">
-      <span class="rda-chip">Phone Mode</span>
-      <h1 class="rda-title">Regional Director Approvals</h1>
+      <span class="rda-chip">Regional Director</span>
+      <h1 class="rda-title">Endorsed Queue</h1>
       <p class="rda-copy">
-        Quick mobile review for endorsed certificate packages. Participant previews are loaded here so approval is easier to complete from the phone.
+        Review endorsed certificate packages in a dedicated queue so the main certificates landing page stays focused on issued certificates only.
       </p>
 
       <div class="rda-hero-actions">
-        <a href="{{ route('admin.certs.index') }}" class="rda-btn rda-btn-white">Desktop Mode</a>
+        <a href="{{ route('admin.certs.index') }}" class="rda-btn rda-btn-white">Issued Certificates</a>
         <a href="{{ route('admin.certs.create') }}" class="rda-btn rda-btn-light">Create (RD)</a>
         <form method="POST" action="{{ route('logout') }}">
           @csrf
@@ -522,7 +553,7 @@
       <div class="rda-section-head">
         <div>
           <h2>Approve Endorsed Packages</h2>
-          <p>Large buttons and quick participant preview for phone use.</p>
+          <p>Pending packages are limited to 5 per page for quicker review.</p>
         </div>
       </div>
 
@@ -621,6 +652,17 @@
           </div>
         @endforelse
       </div>
+
+      @if (method_exists($pendingEndorsements, 'total'))
+        <div class="rda-footer">
+          <div class="rda-footer-text">
+            Showing <strong>{{ $pendingEndorsements->firstItem() ?? 0 }}</strong>
+            to <strong>{{ $pendingEndorsements->lastItem() ?? 0 }}</strong>
+            of <strong>{{ $pendingEndorsements->total() }}</strong> endorsed packages
+          </div>
+          <div class="rda-pagination">{{ $pendingEndorsements->links('vendor.pagination.admin') }}</div>
+        </div>
+      @endif
     </section>
 
     @if ($recentDecisions->isNotEmpty())

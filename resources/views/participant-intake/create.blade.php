@@ -512,7 +512,7 @@ This will serve as our reference for post-training documentation and processing.
                 <input name="first_name" value="{{ old('first_name') }}" required class="field-input">
               </div>
               <div>
-                <label class="field-label">Middle Initial</label>
+                <label class="field-label">Middle Initial (Optional)</label>
                 <input name="middle_initial" value="{{ old('middle_initial') }}" maxlength="10" class="field-input">
               </div>
               <div>
@@ -648,7 +648,7 @@ This will serve as our reference for post-training documentation and processing.
             <div class="mt-4 grid gap-4 sm:grid-cols-3">
               <div>
                 <label class="field-label">Organization Name</label>
-                <input name="organization_name" value="{{ old('organization_name') }}" class="field-input">
+                <input name="organization_name" value="{{ old('organization_name') }}" required class="field-input">
               </div>
               <div>
                 <label class="field-label">Affiliation / Sector</label>
@@ -670,7 +670,7 @@ This will serve as our reference for post-training documentation and processing.
               </div>
               <div>
                 <label class="field-label">Position / Designation</label>
-                <input name="position_designation" value="{{ old('position_designation') }}" class="field-input">
+                <input name="position_designation" value="{{ old('position_designation') }}" required class="field-input">
               </div>
             </div>
           </section>

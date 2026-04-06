@@ -12,7 +12,9 @@ use App\Support\PdfImageNormalizer;
 use App\Support\RegionalDirectorSignatory;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -62,34 +64,6 @@ class CertificateAdminController extends Controller
         $pendingEndorsementsCount = (clone $endorsementBaseQuery)
             ->where('status', CertificateEndorsement::STATUS_ENDORSED)
             ->count();
-        $endorsementRequests = (clone $endorsementBaseQuery)
-            ->with(['submitter:id,name'])
-            ->orderByRaw("CASE status WHEN 'endorsed' THEN 0 WHEN 'rd_rejected' THEN 1 ELSE 2 END")
-            ->orderByDesc('created_at')
-            ->limit(20)
-            ->get();
-        if ($isRegionalDirector) {
-            $endorsementRequests->each(function (CertificateEndorsement $endorsement): void {
-                $endorsement->setAttribute('first_participant_name', null);
-                if ($endorsement->status !== CertificateEndorsement::STATUS_ENDORSED) {
-                    return;
-                }
-                if (empty($endorsement->participants_file_path)) {
-                    return;
-                }
-
-                try {
-                    $participants = $this->parseParticipantStoragePath((string) $endorsement->participants_file_path);
-                    $firstName = trim((string) ($participants[0]['name'] ?? ''));
-                    if ($firstName !== '') {
-                        $endorsement->setAttribute('first_participant_name', $firstName);
-                    }
-                } catch (\Throwable $e) {
-                    $endorsement->setAttribute('first_participant_name', null);
-                }
-            });
-        }
-
         if ($group === 'training') {
             $groups = $query
                 ->select(
@@ -116,7 +90,6 @@ class CertificateAdminController extends Controller
                 'canEndorseCertificates',
                 'canDownloadCertificates',
                 'canViewAnalytics',
-                'endorsementRequests',
                 'pendingEndorsementsCount'
             ));
         }
@@ -130,7 +103,6 @@ class CertificateAdminController extends Controller
             'canEndorseCertificates',
             'canDownloadCertificates',
             'canViewAnalytics',
-            'endorsementRequests',
             'pendingEndorsementsCount'
         ));
     }
@@ -144,8 +116,8 @@ class CertificateAdminController extends Controller
             ->with(['submitter:id,name'])
             ->where('status', CertificateEndorsement::STATUS_ENDORSED)
             ->orderByDesc('created_at')
-            ->limit(20)
-            ->get();
+            ->paginate(5, ['*'], 'queue_page')
+            ->withQueryString();
 
         $pendingEndorsements->each(function (CertificateEndorsement $endorsement) use ($request): void {
             $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
@@ -207,7 +179,7 @@ class CertificateAdminController extends Controller
 
         return view('admin.certificates.approvals', [
             'pendingEndorsements' => $pendingEndorsements,
-            'pendingCount' => $pendingEndorsements->count(),
+            'pendingCount' => $pendingEndorsements->total(),
             'approvedToday' => $approvedToday,
             'rejectedToday' => $rejectedToday,
             'recentDecisions' => $recentDecisions,
@@ -588,7 +560,7 @@ class CertificateAdminController extends Controller
             'local'
         );
 
-        CertificateEndorsement::create([
+        $endorsement = CertificateEndorsement::create([
             'status' => CertificateEndorsement::STATUS_ENDORSED,
             'submitted_by' => $user?->id,
             'participants_count' => count($participants),
@@ -596,6 +568,8 @@ class CertificateAdminController extends Controller
             'template_pdf_path' => $templatePdfPath,
             'payload' => $this->buildTrainingPayload($data),
         ]);
+        $this->notifyRegionalDirectorMessengerOnEndorsement($endorsement, $user);
+        $this->notifyRegionalDirectorTelegramOnEndorsement($endorsement, $user);
 
         return redirect()
             ->route('admin.certs.index')
@@ -735,6 +709,136 @@ class CertificateAdminController extends Controller
             'regional-director-signature.' . $extension,
             'public'
         );
+    }
+
+    private function notifyRegionalDirectorMessengerOnEndorsement(
+        CertificateEndorsement $endorsement,
+        mixed $submitter
+    ): void {
+        if (!config('services.facebook_messenger.enabled', false)) {
+            return;
+        }
+
+        $participantsCount = (int) ($endorsement->participants_count ?? 0);
+        $notifyEvery = (bool) config('services.facebook_messenger.notify_on_every_endorsement', true);
+        $bulkThreshold = max(1, (int) config('services.facebook_messenger.bulk_threshold', 50));
+        if (!$notifyEvery && $participantsCount < $bulkThreshold) {
+            return;
+        }
+
+        $pageAccessToken = trim((string) config('services.facebook_messenger.page_access_token', ''));
+        $regionalDirectorPsid = trim((string) config('services.facebook_messenger.rd_psid', ''));
+        if ($pageAccessToken === '' || $regionalDirectorPsid === '') {
+            Log::warning('Messenger notification skipped: missing access token or RD PSID.');
+
+            return;
+        }
+
+        $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
+        $trainingTitle = trim((string) ($payload['training_title'] ?? 'Untitled training'));
+        $dateRange = $this->formatEndorsementDateRange($payload);
+        $submittedBy = trim((string) ($submitter?->name ?? 'Unknown submitter'));
+        $approvalsUrl = trim((string) config('services.facebook_messenger.approvals_url', ''));
+        if ($approvalsUrl === '') {
+            $approvalsUrl = url('/admin/certificates/approvals');
+        }
+
+        $message = "New certificate endorsement submitted.\n"
+            . "Training: {$trainingTitle}\n"
+            . "Schedule: {$dateRange}\n"
+            . "Participants: {$participantsCount}\n"
+            . "Submitted by: {$submittedBy}\n"
+            . "Review queue: {$approvalsUrl}";
+
+        $graphApiVersion = trim((string) config('services.facebook_messenger.graph_api_version', 'v22.0'));
+        $graphApiVersion = ltrim($graphApiVersion, '/');
+        $endpoint = "https://graph.facebook.com/{$graphApiVersion}/me/messages";
+
+        try {
+            $response = Http::asJson()
+                ->timeout(12)
+                ->post($endpoint, [
+                    'recipient' => ['id' => $regionalDirectorPsid],
+                    'messaging_type' => 'UPDATE',
+                    'message' => ['text' => $message],
+                    'access_token' => $pageAccessToken,
+                ]);
+
+            if (!$response->successful()) {
+                Log::warning('Messenger notification failed.', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'endorsement_id' => $endorsement->id,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Messenger notification threw an exception.', [
+                'error' => $e->getMessage(),
+                'endorsement_id' => $endorsement->id,
+            ]);
+        }
+    }
+
+    private function notifyRegionalDirectorTelegramOnEndorsement(
+        CertificateEndorsement $endorsement,
+        mixed $submitter
+    ): void {
+        if (!config('services.telegram_bot.enabled', false)) {
+            return;
+        }
+
+        $participantsCount = (int) ($endorsement->participants_count ?? 0);
+        $notifyEvery = (bool) config('services.telegram_bot.notify_on_every_endorsement', true);
+        $bulkThreshold = max(1, (int) config('services.telegram_bot.bulk_threshold', 50));
+        if (!$notifyEvery && $participantsCount < $bulkThreshold) {
+            return;
+        }
+
+        $botToken = trim((string) config('services.telegram_bot.bot_token', ''));
+        $chatId = trim((string) config('services.telegram_bot.rd_chat_id', ''));
+        if ($botToken === '' || $chatId === '') {
+            Log::warning('Telegram notification skipped: missing bot token or RD chat id.');
+
+            return;
+        }
+
+        $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
+        $trainingTitle = trim((string) ($payload['training_title'] ?? 'Untitled training'));
+        $dateRange = $this->formatEndorsementDateRange($payload);
+        $submittedBy = trim((string) ($submitter?->name ?? 'Unknown submitter'));
+        $approvalsUrl = url('/admin/certificates/approvals');
+
+        $message = "New certificate endorsement submitted.\n"
+            . "Training: {$trainingTitle}\n"
+            . "Schedule: {$dateRange}\n"
+            . "Participants: {$participantsCount}\n"
+            . "Submitted by: {$submittedBy}\n"
+            . "Review queue: {$approvalsUrl}";
+
+        $endpoint = "https://api.telegram.org/bot{$botToken}/sendMessage";
+
+        try {
+            $response = Http::asJson()
+                ->timeout(12)
+                ->post($endpoint, [
+                    'chat_id' => $chatId,
+                    'text' => $message,
+                    'disable_web_page_preview' => true,
+                ]);
+
+            if (!$response->successful()) {
+                Log::warning('Telegram notification failed.', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'endorsement_id' => $endorsement->id,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Telegram notification threw an exception.', [
+                'error' => $e->getMessage(),
+                'endorsement_id' => $endorsement->id,
+            ]);
+        }
     }
 
     private function exportTrimmedSignatureImage(UploadedFile $file, string $destinationAbs): bool
@@ -1219,6 +1323,7 @@ class CertificateAdminController extends Controller
         $participants = [];
         $header = null;
         while (($row = fgetcsv($handle)) !== false) {
+            $row = $this->normalizeImportedRow($row);
             $normalized = $this->normalizeHeaderRow($row);
             if ($header === null) {
                 if ($this->rowHasName($normalized)) {
@@ -1244,6 +1349,7 @@ class CertificateAdminController extends Controller
         $participants = [];
         $header = null;
         foreach ($rows as $row) {
+            $row = $this->normalizeImportedRow($row);
             $normalized = $this->normalizeHeaderRow($row);
             if ($header === null) {
                 if ($this->rowHasName($normalized)) {
@@ -1257,6 +1363,37 @@ class CertificateAdminController extends Controller
         }
 
         return array_values(array_filter($participants, fn ($p) => !empty($p['name'])));
+    }
+
+    private function normalizeImportedRow(array $row): array
+    {
+        return array_map(fn ($value) => $this->normalizeImportedValue($value), $row);
+    }
+
+    private function normalizeImportedValue(mixed $value): mixed
+    {
+        if (!is_string($value) || $value === '') {
+            return $value;
+        }
+
+        if (str_starts_with($value, "\xEF\xBB\xBF")) {
+            $value = substr($value, 3);
+        }
+
+        if ($value === '' || mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        foreach (['Windows-1252', 'ISO-8859-1'] as $encoding) {
+            $converted = @iconv($encoding, 'UTF-8//IGNORE', $value);
+            if (is_string($converted) && $converted !== '' && mb_check_encoding($converted, 'UTF-8')) {
+                return $converted;
+            }
+        }
+
+        $sanitized = @iconv('UTF-8', 'UTF-8//IGNORE', $value);
+
+        return is_string($sanitized) ? $sanitized : '';
     }
 
     private function normalizeHeaderRow(array $row): array

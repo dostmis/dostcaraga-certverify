@@ -48,8 +48,11 @@ return [
     'telegram_bot' => [
         'enabled' => env('TG_BOT_ENABLED', false),
         'notify_on_every_endorsement' => env('TG_NOTIFY_ON_EVERY_ENDORSE', true),
+        'notify_on_rd_approval' => env('TG_NOTIFY_ON_RD_APPROVAL', true),
+        'notify_on_rd_approval_bulk_only' => env('TG_NOTIFY_ON_RD_APPROVAL_BULK_ONLY', true),
         'bulk_threshold' => (int) env('TG_BULK_THRESHOLD', 50),
         'bot_token' => env('TG_BOT_TOKEN'),
+        'chat_ids' => env('TG_CHAT_IDS'),
         'rd_chat_id' => env('TG_RD_CHAT_ID'),
         'webhook_secret' => env('TG_WEBHOOK_SECRET'),
     ],

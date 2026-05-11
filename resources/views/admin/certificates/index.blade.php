@@ -89,11 +89,11 @@
     }
 
     .cert-hero-actions {
+      position: relative;
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-      align-content: flex-start;
+      align-items: flex-start;
+      justify-content: flex-end;
+      z-index: 20;
     }
 
     .cert-btn {
@@ -615,6 +615,21 @@
         padding: 14px 14px 0;
       }
     }
+
+    @media (max-width: 640px) {
+      .cert-hero {
+        align-items: flex-start;
+      }
+
+      .cert-hero-left {
+        min-width: 0;
+        flex: 1 1 calc(100% - 64px);
+      }
+
+      .cert-hero-actions {
+        margin-left: auto;
+      }
+    }
   </style>
 
   <div class="cert-page">
@@ -630,31 +645,16 @@
           <div>
             <span class="cert-chip">Certificates Dashboard</span>
             <h1 class="cert-title">Issued Certificates</h1>
-            <p class="cert-subtitle">Workflow: Organizer/Supervising Unit prepare and endorse; Regional Director approves and generates QR certificates.</p>
+
           </div>
         </div>
 
         <div class="cert-hero-actions">
-          @if ($canViewAnalytics)
-            <a href="{{ route('admin.analytics.index') }}" class="cert-btn cert-btn-light">Analytics</a>
-          @endif
-          <a href="{{ route('admin.participant-intakes.index') }}" class="cert-btn cert-btn-light">Intakes</a>
-          @if ($isRegionalDirector)
-            <a href="{{ route('admin.certs.approvals') }}" class="cert-btn cert-btn-light">Endorsed Queue</a>
-          @endif
-          @if ($canEndorseCertificates || $isRegionalDirector)
-            <a href="{{ route('admin.certs.create') }}" class="cert-btn cert-btn-white">{{ $isRegionalDirector ? '+ Create (RD)' : '+ Create & Endorse' }}</a>
-          @endif
-          @if ($isRegionalDirector)
-            <a href="{{ route('admin.certs.approvals') }}" class="cert-btn cert-btn-light">Endorsed Queue: {{ number_format($pendingEndorsementsCount) }}</a>
-          @endif
-          @if ($isRegionalDirector)
-            <a href="{{ route('admin.users.index') }}" class="cert-btn cert-btn-light">Users</a>
-          @endif
-          <form method="POST" action="{{ route('logout') }}">
-            @csrf
-            <button type="submit" class="cert-btn cert-btn-danger">Logout</button>
-          </form>
+          @include('admin.partials.action-menu', [
+            'menuId' => 'cert-dashboard-menu',
+            'menuVariant' => 'dark',
+            'pendingEndorsementsCount' => $pendingEndorsementsCount,
+          ])
         </div>
       </header>
 

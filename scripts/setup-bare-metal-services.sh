@@ -12,6 +12,9 @@ NGINX_SITE_NAME="${NGINX_SITE_NAME:-certverify}"
 DISABLE_DEFAULT_NGINX_SITE="${DISABLE_DEFAULT_NGINX_SITE:-true}"
 PHP_BIN="${PHP_BIN:-/usr/bin/php}"
 RUN_OPTIMIZE="${RUN_OPTIMIZE:-true}"
+UPLOAD_BODY_SIZE="${UPLOAD_BODY_SIZE:-64m}"
+PHP_UPLOAD_MAX_FILESIZE="${PHP_UPLOAD_MAX_FILESIZE:-64M}"
+PHP_POST_MAX_SIZE="${PHP_POST_MAX_SIZE:-64M}"
 
 if [[ "${EUID}" -ne 0 ]]; then
     exec sudo -E bash "$0" "$@"
@@ -98,6 +101,19 @@ if [[ -z "${PHP_FPM_SERVICE}" ]]; then
     exit 1
 fi
 
+PHP_VERSION="$(printf '%s' "${PHP_FPM_SERVICE}" | sed -nE 's/^php([0-9]+\.[0-9]+)-fpm$/\1/p')"
+if [[ -z "${PHP_VERSION}" ]]; then
+    echo "Could not derive PHP version from service name: ${PHP_FPM_SERVICE}" >&2
+    echo "Set PHP_FPM_SERVICE (for example php8.3-fpm) and rerun." >&2
+    exit 1
+fi
+PHP_FPM_CONF_DIR="/etc/php/${PHP_VERSION}/fpm/conf.d"
+PHP_UPLOAD_INI_FILE="${PHP_FPM_CONF_DIR}/99-certverify-upload.ini"
+if [[ ! -d "${PHP_FPM_CONF_DIR}" ]]; then
+    echo "PHP-FPM conf.d directory not found: ${PHP_FPM_CONF_DIR}" >&2
+    exit 1
+fi
+
 echo "Configuring CertVerify production services"
 echo "  Project dir: ${PROJECT_DIR}"
 echo "  Env file: ${ENV_FILE}"
@@ -105,6 +121,9 @@ echo "  Host: ${APP_HOST}"
 echo "  Listen: ${APP_LISTEN_ADDR}:${APP_LISTEN_PORT}"
 echo "  PHP-FPM socket: ${PHP_FPM_SOCK}"
 echo "  PHP-FPM service: ${PHP_FPM_SERVICE}"
+echo "  Nginx max body size: ${UPLOAD_BODY_SIZE}"
+echo "  PHP upload_max_filesize: ${PHP_UPLOAD_MAX_FILESIZE}"
+echo "  PHP post_max_size: ${PHP_POST_MAX_SIZE}"
 
 install -d -m 0755 /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/systemd/system
 
@@ -118,7 +137,7 @@ server {
 
     charset utf-8;
     server_tokens off;
-    client_max_body_size 32m;
+    client_max_body_size ${UPLOAD_BODY_SIZE};
 
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -155,6 +174,12 @@ server {
         deny all;
     }
 }
+EOF
+
+cat > "${PHP_UPLOAD_INI_FILE}" <<EOF
+; CertVerify upload limits (managed by setup-bare-metal-services.sh)
+upload_max_filesize=${PHP_UPLOAD_MAX_FILESIZE}
+post_max_size=${PHP_POST_MAX_SIZE}
 EOF
 
 ln -sfn "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf"

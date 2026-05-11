@@ -32,6 +32,8 @@ class CertificateAdminController extends Controller
     private const STANDARD_NAME_FONT_FAMILY = 'Times';
     private const NOT_APPLICABLE = 'Not Applicable';
     private const CUSTOM_DOST_PROJECT_OPTION = 'Others';
+    private const PARTICIPANTS_FILE_MAX_KB = 2048;
+    private const CERTIFICATE_TEMPLATE_MAX_KB = 51200;
 
     public function index(Request $request)
     {
@@ -631,6 +633,8 @@ class CertificateAdminController extends Controller
             $message .= '.';
         }
 
+        $this->notifyTelegramOnRdApproval($endorsement, $user, $generated);
+
         return back()->with('success', $message);
     }
 
@@ -794,10 +798,9 @@ class CertificateAdminController extends Controller
             return;
         }
 
-        $botToken = trim((string) config('services.telegram_bot.bot_token', ''));
-        $chatId = trim((string) config('services.telegram_bot.rd_chat_id', ''));
-        if ($botToken === '' || $chatId === '') {
-            Log::warning('Telegram notification skipped: missing bot token or RD chat id.');
+        $chatIds = $this->telegramRecipientChatIds();
+        if (empty($chatIds)) {
+            Log::warning('Telegram endorsement notification skipped: missing Telegram chat recipients.');
 
             return;
         }
@@ -815,29 +818,124 @@ class CertificateAdminController extends Controller
             . "Submitted by: {$submittedBy}\n"
             . "Review queue: {$approvalsUrl}";
 
+        $this->sendTelegramMessageToChats($chatIds, $message, $endorsement->id);
+    }
+
+    private function notifyTelegramOnRdApproval(
+        CertificateEndorsement $endorsement,
+        mixed $approver,
+        int $generatedCount
+    ): void {
+        if (!config('services.telegram_bot.enabled', false)) {
+            return;
+        }
+
+        if (!config('services.telegram_bot.notify_on_rd_approval', true)) {
+            return;
+        }
+
+        $bulkThreshold = max(1, (int) config('services.telegram_bot.bulk_threshold', 50));
+        $bulkOnly = (bool) config('services.telegram_bot.notify_on_rd_approval_bulk_only', true);
+        if ($bulkOnly && $generatedCount < $bulkThreshold) {
+            return;
+        }
+
+        $chatIds = $this->telegramRecipientChatIds();
+        if (empty($chatIds)) {
+            Log::warning('Telegram RD approval notification skipped: missing Telegram chat recipients.');
+
+            return;
+        }
+
+        $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
+        $trainingTitle = trim((string) ($payload['training_title'] ?? 'Untitled training'));
+        $dateRange = $this->formatEndorsementDateRange($payload);
+        $participantsCount = (int) ($endorsement->participants_count ?? $generatedCount);
+        $approvedBy = trim((string) ($approver?->name ?? 'Regional Director'));
+        $queueUrl = url('/admin/certificates?status=rd_approved');
+
+        $message = "RD approved certificate endorsement.\n"
+            . "Training: {$trainingTitle}\n"
+            . "Schedule: {$dateRange}\n"
+            . "Participants: {$participantsCount}\n"
+            . "Generated: {$generatedCount}\n"
+            . "Approved by: {$approvedBy}\n"
+            . "Approved queue: {$queueUrl}";
+
+        $this->sendTelegramMessageToChats($chatIds, $message, $endorsement->id);
+    }
+
+    private function telegramRecipientChatIds(): array
+    {
+        $chatIds = [];
+        $chatIdsCsv = (string) config('services.telegram_bot.chat_ids', '');
+        if ($chatIdsCsv !== '') {
+            $chatIds = array_map('trim', explode(',', $chatIdsCsv));
+        }
+
+        $legacyChatId = trim((string) config('services.telegram_bot.rd_chat_id', ''));
+        if ($legacyChatId !== '') {
+            foreach (explode(',', $legacyChatId) as $legacyChatIdPart) {
+                $legacyChatIdPart = trim($legacyChatIdPart);
+                if ($legacyChatIdPart !== '') {
+                    $chatIds[] = $legacyChatIdPart;
+                }
+            }
+        }
+
+        $uniqueValid = [];
+        foreach ($chatIds as $chatId) {
+            if ($chatId === '') {
+                continue;
+            }
+
+            if (!preg_match('/^(-?\d+|@[A-Za-z0-9_]{5,})$/', $chatId)) {
+                continue;
+            }
+
+            $uniqueValid[$chatId] = true;
+        }
+
+        return array_keys($uniqueValid);
+    }
+
+    private function sendTelegramMessageToChats(array $chatIds, string $message, int $endorsementId): void
+    {
+        $botToken = trim((string) config('services.telegram_bot.bot_token', ''));
+        if ($botToken === '') {
+            Log::warning('Telegram notification skipped: missing bot token.', [
+                'endorsement_id' => $endorsementId,
+            ]);
+
+            return;
+        }
+
         $endpoint = "https://api.telegram.org/bot{$botToken}/sendMessage";
+        foreach ($chatIds as $chatId) {
+            try {
+                $response = Http::asJson()
+                    ->timeout(12)
+                    ->post($endpoint, [
+                        'chat_id' => $chatId,
+                        'text' => $message,
+                        'disable_web_page_preview' => true,
+                    ]);
 
-        try {
-            $response = Http::asJson()
-                ->timeout(12)
-                ->post($endpoint, [
+                if (!$response->successful()) {
+                    Log::warning('Telegram notification failed.', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                        'chat_id' => $chatId,
+                        'endorsement_id' => $endorsementId,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Telegram notification threw an exception.', [
+                    'error' => $e->getMessage(),
                     'chat_id' => $chatId,
-                    'text' => $message,
-                    'disable_web_page_preview' => true,
-                ]);
-
-            if (!$response->successful()) {
-                Log::warning('Telegram notification failed.', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                    'endorsement_id' => $endorsement->id,
+                    'endorsement_id' => $endorsementId,
                 ]);
             }
-        } catch (\Throwable $e) {
-            Log::error('Telegram notification threw an exception.', [
-                'error' => $e->getMessage(),
-                'endorsement_id' => $endorsement->id,
-            ]);
         }
     }
 
@@ -971,8 +1069,15 @@ class CertificateAdminController extends Controller
             'training_budget' => ['nullable', 'numeric', 'min:0'],
             'expected_number_of_participants' => ['nullable', 'integer', 'min:1'],
             'issuing_office' => ['required', 'string', 'max:255'],
-            'participants_file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:2048'],
-            'certificate_pdf_shared' => ['required', 'file', 'mimes:pdf', 'max:5120'],
+            'participants_file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:' . self::PARTICIPANTS_FILE_MAX_KB],
+            'certificate_pdf_shared' => ['required', 'file', 'mimes:pdf', 'max:' . self::CERTIFICATE_TEMPLATE_MAX_KB],
+        ], [
+            'participants_file.uploaded' => 'The participants file failed to upload due to a server upload limit. Please reduce file size and try again.',
+            'participants_file.max' => 'The participants file must not be greater than ' . (int) floor(self::PARTICIPANTS_FILE_MAX_KB / 1024) . ' MB.',
+            'certificate_pdf_shared.required' => 'Please upload the certificate template PDF.',
+            'certificate_pdf_shared.mimes' => 'The certificate template must be a valid PDF file.',
+            'certificate_pdf_shared.uploaded' => 'The certificate template PDF failed to upload due to a server upload limit (PHP/Nginx). Please compress the PDF or contact admin to increase upload limits.',
+            'certificate_pdf_shared.max' => 'The certificate template PDF must not be greater than ' . (int) floor(self::CERTIFICATE_TEMPLATE_MAX_KB / 1024) . ' MB.',
         ]);
 
         $data = $validator->validate();
@@ -1913,6 +2018,8 @@ class CertificateAdminController extends Controller
 
         $xEnv = env('CERT_RD_ESIGN_X');
         $yEnv = env('CERT_RD_ESIGN_Y');
+        $yOffsetEnv = env('CERT_RD_ESIGN_Y_OFFSET', 0);
+        $yOffset = is_numeric($yOffsetEnv) ? (float) $yOffsetEnv : 0.0;
 
         $x = is_numeric($xEnv)
             ? (float) $xEnv
@@ -1920,6 +2027,7 @@ class CertificateAdminController extends Controller
         $y = is_numeric($yEnv)
             ? (float) $yEnv
             : ($pageSize['height'] - $boxHeight - 18);
+        $y += $yOffset;
 
         $margin = 5.0;
         $maxX = max($margin, $pageSize['width'] - $margin - $boxWidth);

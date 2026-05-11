@@ -54,12 +54,12 @@
     .rda-hero-actions {
       display: flex;
       flex-wrap: wrap;
+      justify-content: flex-end;
       gap: 10px;
       margin-top: 18px;
     }
 
-    .rda-btn,
-    .rda-hero-actions button {
+    .rda-btn {
       text-decoration: none;
       border: 1px solid transparent;
       border-radius: 14px;
@@ -80,8 +80,7 @@
       background: rgba(255, 255, 255, 0.12);
     }
 
-    .rda-btn-light:hover,
-    .rda-hero-actions button:hover {
+    .rda-btn-light:hover {
       background: rgba(255, 255, 255, 0.2);
     }
 
@@ -498,17 +497,13 @@
     <header class="rda-hero">
       <span class="rda-chip">Regional Director</span>
       <h1 class="rda-title">Endorsed Queue</h1>
-      <p class="rda-copy">
-        Review endorsed certificate packages in a dedicated queue so the main certificates landing page stays focused on issued certificates only.
-      </p>
 
       <div class="rda-hero-actions">
-        <a href="{{ route('admin.certs.index') }}" class="rda-btn rda-btn-white">Issued Certificates</a>
-        <a href="{{ route('admin.certs.create') }}" class="rda-btn rda-btn-light">Create (RD)</a>
-        <form method="POST" action="{{ route('logout') }}">
-          @csrf
-          <button type="submit" class="rda-btn rda-btn-danger">Logout</button>
-        </form>
+        @include('admin.partials.action-menu', [
+          'menuId' => 'endorsed-queue-menu',
+          'menuVariant' => 'dark',
+          'pendingEndorsementsCount' => $pendingEndorsements->total(),
+        ])
       </div>
     </header>
 

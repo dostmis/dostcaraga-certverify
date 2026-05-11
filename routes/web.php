@@ -3,6 +3,7 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\CertificateAdminController;
+use App\Http\Controllers\Admin\AccountSettingsController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ParticipantIntakeAdminController;
 use App\Http\Controllers\Admin\UserAdminController;
@@ -52,6 +53,8 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
     });
 
     Route::middleware('role:regional_director')->group(function () {
+        Route::get('/account-settings', [AccountSettingsController::class, 'edit'])->name('admin.account-settings.edit');
+
         Route::post('/certificates', [CertificateAdminController::class, 'store'])->name('admin.certs.store');
         Route::post('/certificates/signatory', [CertificateAdminController::class, 'updateRegionalDirectorSignatory'])->name('admin.certs.signatory.update');
         Route::post('/certificates/endorsements/{id}/approve', [CertificateAdminController::class, 'approveEndorsement'])->name('admin.certs.endorsements.approve');

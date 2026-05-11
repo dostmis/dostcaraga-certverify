@@ -42,6 +42,10 @@ docker compose exec app php artisan optimize
 ```
 
 Default app URL is `http://localhost:8080` unless `APP_PORT`/`APP_BIND` is changed.
+Default upload limits are configured as:
+- Nginx `client_max_body_size=64m`
+- PHP `upload_max_filesize=64M`
+- PHP `post_max_size=64M`
 
 ## 3. Backup system (automatic)
 

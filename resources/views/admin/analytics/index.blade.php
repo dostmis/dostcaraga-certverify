@@ -64,6 +64,7 @@
     .an-actions {
       display: flex;
       align-items: center;
+      justify-content: flex-end;
       gap: 8px;
       flex-wrap: wrap;
     }
@@ -612,9 +613,10 @@
         </div>
 
         <div class="an-actions">
-          <a href="{{ route('admin.certs.index') }}" class="an-btn an-btn-outline">Back to Certificates Dashboard</a>
-          <a href="{{ route('admin.analytics.export', array_merge(request()->all(), ['format' => 'csv'])) }}" class="an-btn an-btn-outline">Export CSV</a>
-          <a href="{{ route('admin.analytics.export', array_merge(request()->all(), ['format' => 'xlsx'])) }}" class="an-btn an-btn-dark">Export XLSX</a>
+          @include('admin.partials.action-menu', [
+            'menuId' => 'analytics-menu',
+            'showAnalyticsExports' => true,
+          ])
         </div>
       </header>
 

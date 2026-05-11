@@ -102,11 +102,16 @@ Install provided config:
 sudo cp deploy/bare-metal/nginx/certify.dostcaraga.ph.conf /etc/nginx/sites-available/certify.dostcaraga.ph
 sudo ln -s /etc/nginx/sites-available/certify.dostcaraga.ph /etc/nginx/sites-enabled/certify.dostcaraga.ph
 sudo rm -f /etc/nginx/sites-enabled/default
+sudo tee /etc/php/8.3/fpm/conf.d/99-certverify-upload.ini >/dev/null <<'EOF'
+upload_max_filesize=64M
+post_max_size=64M
+EOF
 sudo nginx -t
 sudo systemctl restart nginx php8.3-fpm
 ```
 
 The site listens only on `127.0.0.1:8080` so it is not exposed directly to the internet.
+Default upload limits are configured for certificate templates up to 50 MB and multipart requests up to 64 MB.
 
 ## 5. Run queue worker + scheduler with systemd
 

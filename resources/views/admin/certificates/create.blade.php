@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Create Certificate</title>
+  @vite(['resources/js/app.js'])
   <style>
     :root {
       --bg-a: #eaf2ff;
@@ -89,28 +90,12 @@
       line-height: 1.45;
     }
 
-    .back-link {
+    .hero-actions {
       margin-top: 6px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 10px 14px;
-      border: 1px solid #bcd1e5;
-      border-radius: 12px;
-      background: #ffffff;
-      color: #0b57d0;
-      text-decoration: none;
-      font-weight: 800;
-      font-size: 14px;
-      white-space: nowrap;
-      transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
-    }
-
-    .back-link:hover {
-      background: #f5f9ff;
-      border-color: #8fb7db;
-      transform: translateY(-1px);
+      display: flex;
+      justify-content: flex-end;
+      position: relative;
+      z-index: 30;
     }
 
     .content {
@@ -278,8 +263,10 @@
         grid-template-columns: 1fr;
       }
 
-      .back-link {
+      .hero-actions {
         margin-top: 0;
+        width: 100%;
+        justify-content: flex-start;
       }
     }
   </style>
@@ -301,7 +288,11 @@
               : 'Prepare all training details and files, then endorse to the Regional Director for approval and QR generation.' }}
         </p>
       </div>
-      <a class="back-link" href="{{ route('admin.certs.index') }}">← Back to Certificate Dashboard</a>
+      <div class="hero-actions">
+        @include('admin.partials.action-menu', [
+          'menuId' => 'certificate-create-menu',
+        ])
+      </div>
     </header>
 
     <div class="content">
@@ -569,7 +560,7 @@
               <label>Certificate Template PDF</label>
               <input type="file" name="certificate_pdf_shared" accept="application/pdf" required>
               <div class="muted">
-                Upload one PDF template used for all imported participants.
+                Upload one PDF template used for all imported participants. Maximum file size: 50 MB.
               </div>
             </div>
 

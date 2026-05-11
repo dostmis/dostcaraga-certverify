@@ -6,10 +6,9 @@
           <h1 class="text-2xl font-extrabold tracking-tight">User Approvals</h1>
           <p class="mt-1 text-sm text-slate-500">Approve or reject new accounts</p>
         </div>
-        <a href="{{ route('admin.certs.index') }}"
-           class="inline-flex items-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
-          ← Back to certificates
-        </a>
+        @include('admin.partials.action-menu', [
+          'menuId' => 'users-menu',
+        ])
       </div>
 
       @if (session('success'))

@@ -884,6 +884,7 @@ This will serve as our reference for post-training documentation and processing.
         for (const [provName, provObj] of Object.entries(regionObj)) {
           if (provName === 'population' || typeof provObj !== 'object') continue;
           const cities = [];
+          const directBarangays = [];
           for (const [cityName, cityObj] of Object.entries(provObj)) {
             if (cityName === 'population' || cityName === 'class' || cityName === 'cityClass' || typeof cityObj !== 'object') continue;
             const barangays = [];
@@ -892,7 +893,14 @@ This will serve as our reference for post-training documentation and processing.
                 barangays.push(brgyName);
               }
             }
-            cities.push({ name: cityName, barangays: barangays.sort((a, b) => a.localeCompare(b)) });
+            if (barangays.length === 0 && typeof cityObj.population === 'number') {
+              directBarangays.push(cityName);
+            } else {
+              cities.push({ name: cityName, barangays: barangays.sort((a, b) => a.localeCompare(b)) });
+            }
+          }
+          if (directBarangays.length > 0) {
+            cities.push({ name: provName, barangays: directBarangays.sort((a, b) => a.localeCompare(b)) });
           }
           provinces.push({ name: provName, cities });
         }

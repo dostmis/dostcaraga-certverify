@@ -45,8 +45,8 @@
 
     .pi-head-actions {
       display: flex;
-      flex-direction: column;
       align-items: flex-end;
+      justify-content: flex-end;
       gap: 8px;
     }
 
@@ -64,8 +64,7 @@
       font-weight: 900;
     }
 
-    .pi-btn,
-    .pi-head-actions button {
+    .pi-btn {
       text-decoration: none;
       border: 1px solid transparent;
       border-radius: 12px;
@@ -81,8 +80,7 @@
       color: #334155;
     }
 
-    .pi-btn:hover,
-    .pi-head-actions button:hover {
+    .pi-btn:hover {
       filter: brightness(0.98);
     }
 
@@ -333,42 +331,12 @@
         </div>
 
         <div class="pi-head-actions">
-          <div class="pi-head-top">
-            @if ($canRegionalDirectorActions)
-              <a href="{{ route('admin.certs.index') }}" class="pi-btn pi-btn-outline">Back to Certificates Dashboard</a>
-            @elseif ($canEndorse)
-              <a href="{{ route('admin.certs.create') }}" class="pi-btn pi-btn-outline">Create & Endorse Certificate</a>
-              <a href="{{ route('admin.certs.index') }}" class="pi-btn pi-btn-outline">Back to Certificates Dashboard</a>
-            @endif
-          </div>
-
-          <div class="pi-head-bottom">
-            @if ($canRegionalDirectorActions)
-              <form method="POST" action="{{ route('admin.participant-intakes.toggle') }}">
-                @csrf
-                <input type="hidden" name="enabled" value="{{ $intakeEnabled ? '0' : '1' }}">
-                <button
-                  class="pi-btn"
-                  style="color:#fff;border-color:{{ $intakeEnabled ? '#16a34a' : '#dc2626' }};background:{{ $intakeEnabled ? '#16a34a' : '#dc2626' }};"
-                >
-                  {{ $intakeEnabled ? 'Intake: ON' : 'Intake: OFF' }}
-                </button>
-              </form>
-              <span class="pi-sep">|</span>
-            @endif
-            @if (!$canRegionalDirectorActions && !empty($activeEventUrl))
-              <a href="{{ $activeEventUrl }}" class="pi-btn pi-btn-outline" target="_blank" rel="noopener">Form</a>
-            @endif
-            @if ($canRegionalDirectorActions)
-              <span class="pi-sep">|</span>
-              <a href="{{ route('admin.participant-intakes.export', array_merge(request()->all(), ['format' => 'csv'])) }}" class="pi-btn pi-btn-outline">Export CSV</a>
-            @endif
-            <span class="pi-sep">|</span>
-            <form method="POST" action="{{ route('logout') }}">
-              @csrf
-              <button class="pi-btn" style="color:#fff;background:#dc2626;border-color:#dc2626;">Logout</button>
-            </form>
-          </div>
+          @include('admin.partials.action-menu', [
+            'menuId' => 'participant-intakes-menu',
+            'showIntakeActions' => true,
+            'intakeEnabled' => $intakeEnabled,
+            'activeEventUrl' => $activeEventUrl,
+          ])
         </div>
       </header>
 

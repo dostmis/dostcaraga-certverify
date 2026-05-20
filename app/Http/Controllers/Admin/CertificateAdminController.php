@@ -96,6 +96,35 @@ class CertificateAdminController extends Controller
             ));
         }
 
+        if ($group === 'endorsements') {
+            $endorsementsQuery = CertificateEndorsement::query()
+                ->orderByDesc('created_at');
+
+            if (!$isRegionalDirector && $user) {
+                $endorsementsQuery->where('submitted_by', $user->id);
+            }
+
+            $endorsements = $endorsementsQuery->paginate(10)->withQueryString();
+
+            $endorsements->each(function (CertificateEndorsement $endorsement): void {
+                $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
+                $endorsement->setAttribute('training_title', $payload['training_title'] ?? 'Untitled');
+                $endorsement->setAttribute('issuing_office', $payload['issuing_office'] ?? '');
+                $endorsement->setAttribute('date_range', $this->formatEndorsementDateRange($payload));
+            });
+
+            return view('admin.certificates.index', compact(
+                'endorsements',
+                'search',
+                'group',
+                'isRegionalDirector',
+                'canEndorseCertificates',
+                'canDownloadCertificates',
+                'canViewAnalytics',
+                'pendingEndorsementsCount'
+            ));
+        }
+
         $certs = $query->orderByDesc('id')->paginate(7)->withQueryString();
         return view('admin.certificates.index', compact(
             'certs',

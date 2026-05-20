@@ -1,6 +1,7 @@
 <x-admin-layout title="Certificates">
   @php
     $isGrouped = ($group ?? '') === 'training';
+    $isEndorsements = ($group ?? '') === 'endorsements';
     $isRegionalDirector = (bool) ($isRegionalDirector ?? (auth()->user() && auth()->user()->isRegionalDirector()));
     $canEndorseCertificates = (bool) ($canEndorseCertificates ?? false);
     $pendingEndorsementsCount = (int) ($pendingEndorsementsCount ?? 0);
@@ -703,8 +704,9 @@
 
           <div class="cert-tabs-row">
             <div class="cert-tabs">
-              <a href="{{ route('admin.certs.index', ['q' => $search]) }}" class="cert-tab {{ $isGrouped ? '' : 'active' }}">All certificates</a>
+              <a href="{{ route('admin.certs.index', ['q' => $search]) }}" class="cert-tab {{ !$isGrouped && !$isEndorsements ? 'active' : '' }}">All certificates</a>
               <a href="{{ route('admin.certs.index', ['group' => 'training', 'q' => $search]) }}" class="cert-tab {{ $isGrouped ? 'active' : '' }}">Group by activity</a>
+              <a href="{{ route('admin.certs.index', ['group' => 'endorsements', 'q' => $search]) }}" class="cert-tab {{ $isEndorsements ? 'active' : '' }}">My Endorsements</a>
             </div>
             @if (!empty($search))
               <div class="cert-result">Showing results for <strong>{{ $search }}</strong></div>
@@ -733,6 +735,35 @@
               <h3>PDFs Ready</h3>
               <strong>{{ number_format($visiblePdfs) }}</strong>
               <p>Downloadable certificate files</p>
+            </article>
+          </section>
+        @elseif ($isEndorsements)
+          @php
+            $visibleEndorsements = $endorsements->count();
+            $pendingCount = $endorsements->where('status', \App\Models\CertificateEndorsement::STATUS_ENDORSED)->count();
+            $approvedCount = $endorsements->where('status', \App\Models\CertificateEndorsement::STATUS_RD_APPROVED)->count();
+            $rejectedCount = $endorsements->where('status', \App\Models\CertificateEndorsement::STATUS_RD_REJECTED)->count();
+          @endphp
+          <section class="cert-stats">
+            <article class="cert-stat">
+              <h3>Total Endorsements</h3>
+              <strong>{{ number_format($endorsements->total()) }}</strong>
+              <p>Submitted for RD approval</p>
+            </article>
+            <article class="cert-stat amber">
+              <h3>Pending</h3>
+              <strong>{{ number_format($endorsements->total() ? $endorsements->where('status', \App\Models\CertificateEndorsement::STATUS_ENDORSED)->count() : 0) }}</strong>
+              <p>Awaiting RD action</p>
+            </article>
+            <article class="cert-stat green">
+              <h3>Approved</h3>
+              <strong>{{ number_format($endorsements->sum(fn($e) => $e->status === \App\Models\CertificateEndorsement::STATUS_RD_APPROVED ? 1 : 0)) }}</strong>
+              <p>Certificates generated</p>
+            </article>
+            <article class="cert-stat red">
+              <h3>Rejected</h3>
+              <strong>{{ number_format($endorsements->sum(fn($e) => $e->status === \App\Models\CertificateEndorsement::STATUS_RD_REJECTED ? 1 : 0)) }}</strong>
+              <p>Returned with reason</p>
             </article>
           </section>
         @else
@@ -818,6 +849,62 @@
               </table>
             </div>
           </section>
+        @elseif ($isEndorsements)
+          <section class="cert-table-wrap">
+            <div class="cert-table-scroll">
+              <table class="cert-table">
+                <thead>
+                  <tr>
+                    <th>Activity</th>
+                    <th>Participants</th>
+                    <th>Submitted</th>
+                    <th>Office</th>
+                    <th>Status</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @forelse ($endorsements as $endorsement)
+                    @php
+                      $submittedAt = $endorsement->created_at
+                        ? \Illuminate\Support\Carbon::parse($endorsement->created_at)->timezone('Asia/Manila')
+                        : null;
+                    @endphp
+                    <tr>
+                      <td class="cert-code">{{ $endorsement->training_title }}</td>
+                      <td class="cert-td-now">{{ $endorsement->participants_count }}</td>
+                      <td class="cert-td-now">{{ $submittedAt ? $submittedAt->format('M j, Y g:ia') : '-' }}</td>
+                      <td class="cert-td-now">{{ $endorsement->issuing_office }}</td>
+                      <td>
+                        @if ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_ENDORSED)
+                          <span class="cert-status status-endorsed">Pending Approval</span>
+                        @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_APPROVED)
+                          <span class="cert-status status-rd-approved">Approved</span>
+                        @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_REJECTED)
+                          <span class="cert-status status-rd-rejected">Rejected</span>
+                        @else
+                          <span class="cert-status status-default">{{ $endorsement->status }}</span>
+                        @endif
+                      </td>
+                      <td>
+                        @if ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_APPROVED)
+                          {{ $endorsement->generated_count }} generated
+                        @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_REJECTED && $endorsement->rejection_reason)
+                          {{ \Illuminate\Support\Str::limit($endorsement->rejection_reason, 80) }}
+                        @else
+                          &mdash;
+                        @endif
+                      </td>
+                    </tr>
+                  @empty
+                    <tr>
+                      <td colspan="6" class="cert-empty">No endorsements submitted yet.</td>
+                    </tr>
+                  @endforelse
+                </tbody>
+              </table>
+            </div>
+          </section>
         @else
           <section class="cert-table-wrap">
             <div class="cert-table-scroll">
@@ -885,6 +972,13 @@
               of <strong>{{ $groups->total() }}</strong> training groups
             </div>
             <div class="cert-pagination">{{ $groups->links('vendor.pagination.admin') }}</div>
+          @elseif ($isEndorsements)
+            <div class="cert-footer-text">
+              Showing <strong>{{ $endorsements->firstItem() ?? 0 }}</strong>
+              to <strong>{{ $endorsements->lastItem() ?? 0 }}</strong>
+              of <strong>{{ $endorsements->total() }}</strong> endorsements
+            </div>
+            <div class="cert-pagination">{{ $endorsements->links('vendor.pagination.admin') }}</div>
           @else
             <div class="cert-footer-text">
               Showing <strong>{{ $certs->firstItem() ?? 0 }}</strong>

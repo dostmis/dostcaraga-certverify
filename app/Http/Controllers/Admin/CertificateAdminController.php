@@ -283,6 +283,7 @@ class CertificateAdminController extends Controller
             'Certificate of Participation',
             'Certificate of Recognition',
             'Certificate of Commendation',
+            'Certificate of Completion',
         ];
     }
 

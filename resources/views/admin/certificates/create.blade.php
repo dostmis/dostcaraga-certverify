@@ -350,12 +350,24 @@
             <div class="grid-2">
               <div class="row">
                 <label>Activity Type</label>
-                <select name="activity_type" required>
+                <select name="activity_type" id="activityTypeSelect" required>
                   <option value="" disabled @selected(old('activity_type', '') === '')>Select Activity Type</option>
                   @foreach ($activityTypes as $activityType)
                     <option value="{{ $activityType }}" @selected(old('activity_type') === $activityType)>{{ $activityType }}</option>
                   @endforeach
                 </select>
+              </div>
+
+              <div class="row" id="activityTypeOtherRow" style="{{ old('activity_type') === 'Others' ? '' : 'display:none;' }}">
+                <label>If Others, please specify activity type</label>
+                <input
+                  type="text"
+                  id="activityTypeOtherInput"
+                  name="activity_type_other"
+                  value="{{ old('activity_type_other') }}"
+                  maxlength="255"
+                  {{ old('activity_type') === 'Others' ? 'required' : '' }}
+                >
               </div>
 
               <div class="row">
@@ -596,6 +608,9 @@
     </div>
   </div>
   <script>
+    const activityTypeSelect = document.getElementById('activityTypeSelect');
+    const activityTypeOtherRow = document.getElementById('activityTypeOtherRow');
+    const activityTypeOtherInput = document.getElementById('activityTypeOtherInput');
     const topicSelect = document.querySelector('select[name="topic"]');
     const topicOtherRow = document.getElementById('topicOtherRow');
     const topicOtherInput = document.getElementById('topicOtherInput');
@@ -606,7 +621,6 @@
     const dostProgramSelect = document.querySelector('select[name="dost_program"]');
     const dostProgramOtherRow = document.getElementById('dostProgramOtherRow');
     const dostProgramOtherInput = document.getElementById('dostProgramOtherInput');
-    const activityTypeSelect = document.querySelector('select[name="activity_type"]');
     const trainingHoursLabel = document.getElementById('trainingHoursLabel');
     const trainingBudgetLabel = document.getElementById('trainingBudgetLabel');
     const dostProjectLabel = document.getElementById('dostProjectLabel');
@@ -652,6 +666,21 @@
       code: '',
       programPrefix: 'SSCP',
     };
+
+    const toggleActivityTypeOther = () => {
+      if (!activityTypeSelect || !activityTypeOtherRow || !activityTypeOtherInput) {
+        return;
+      }
+
+      const isOthers = activityTypeSelect.value === 'Others';
+      activityTypeOtherRow.style.display = isOthers ? '' : 'none';
+      activityTypeOtherInput.required = isOthers;
+    };
+
+    if (activityTypeSelect) {
+      activityTypeSelect.addEventListener('change', toggleActivityTypeOther);
+      toggleActivityTypeOther();
+    }
 
     const toggleTopicOther = () => {
       if (!topicSelect || !topicOtherRow || !topicOtherInput) {

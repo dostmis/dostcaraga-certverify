@@ -302,6 +302,7 @@ class CertificateAdminController extends Controller
             'Seminar',
             'Webinar',
             'Conference',
+            'Others',
         ];
     }
 
@@ -1078,6 +1079,7 @@ class CertificateAdminController extends Controller
         $validator = Validator::make($input, [
             'training_title' => ['required', 'string', 'max:255'],
             'activity_type' => ['required', Rule::in($this->activityTypes())],
+            'activity_type_other' => ['exclude_unless:activity_type,Others', 'required', 'string', 'max:255', 'regex:/.*\S.*/'],
             'certificate_type' => ['required', Rule::in($this->certificateTypes())],
             'recipient_type' => ['required', Rule::in($this->recipientTypes())],
             'recipient_type_other' => ['exclude_unless:recipient_type,Others', 'required', 'string', 'max:255', 'regex:/.*\S.*/'],
@@ -1115,6 +1117,9 @@ class CertificateAdminController extends Controller
         $automaticCertificateType = $this->automaticCertificateTypeByRecipientType()[$data['recipient_type']] ?? null;
         if ($automaticCertificateType !== null) {
             $data['certificate_type'] = $automaticCertificateType;
+        }
+        if ($data['activity_type'] === 'Others') {
+            $data['activity_type'] = trim((string) $data['activity_type_other']);
         }
         if ($data['recipient_type'] === 'Others') {
             $data['recipient_type'] = trim((string) $data['recipient_type_other']);

@@ -334,6 +334,7 @@ class CertificateAdminController extends Controller
             $this->regularFundsLabel(),
             $this->projectFundsLabel(),
             'Trust Funds',
+            'N/A',
         ];
     }
 

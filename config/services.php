@@ -45,6 +45,11 @@ return [
         'graph_api_version' => env('FB_MESSENGER_GRAPH_API_VERSION', 'v22.0'),
     ],
 
+    'psgc_api' => [
+        'token' => env('PSGC_API_TOKEN'),
+        'version' => env('PSGC_API_VERSION', 'Q2_2024'),
+    ],
+
     'telegram_bot' => [
         'enabled' => env('TG_BOT_ENABLED', false),
         'notify_on_every_endorsement' => env('TG_NOTIFY_ON_EVERY_ENDORSE', true),

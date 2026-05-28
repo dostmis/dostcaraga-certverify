@@ -706,7 +706,7 @@
             <div class="cert-tabs">
               <a href="{{ route('admin.certs.index', ['q' => $search]) }}" class="cert-tab {{ !$isGrouped && !$isEndorsements ? 'active' : '' }}">All certificates</a>
               <a href="{{ route('admin.certs.index', ['group' => 'training', 'q' => $search]) }}" class="cert-tab {{ $isGrouped ? 'active' : '' }}">Group by activity</a>
-              <a href="{{ route('admin.certs.index', ['group' => 'endorsements', 'q' => $search]) }}" class="cert-tab {{ $isEndorsements ? 'active' : '' }}">My Endorsements</a>
+              <a href="{{ route('admin.certs.index', ['group' => 'endorsements', 'q' => $search]) }}" class="cert-tab {{ $isEndorsements ? 'active' : '' }}">My Certificate Endorsements</a>
             </div>
             @if (!empty($search))
               <div class="cert-result">Showing results for <strong>{{ $search }}</strong></div>

@@ -1,0 +1,99 @@
+name: cert-verify-dev
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+      target: app-runtime
+    image: cert-verify-dev-app:local
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.docker.dev
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      APP_URL: ${DOCKER_APP_URL:-http://localhost:8082}
+      DB_HOST: db
+      DB_PORT: 5432
+      TRUSTED_PROXIES: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+      - dev_app_storage:/var/www/html/storage
+      - dev_bootstrap_cache:/var/www/html/bootstrap/cache
+    ports:
+      - "${DEV_APP_PORT:-8082}:8000"
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+
+  worker:
+    image: cert-verify-dev-app:local
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.docker.dev
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      APP_URL: ${DOCKER_APP_URL:-http://localhost:8082}
+      DB_HOST: db
+      DB_PORT: 5432
+      TRUSTED_PROXIES: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+      - dev_app_storage:/var/www/html/storage
+      - dev_bootstrap_cache:/var/www/html/bootstrap/cache
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--timeout=120"]
+
+  vite:
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+      target: vite-dev
+    image: cert-verify-dev-vite:local
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.docker.dev
+    environment:
+      VITE_BACKEND_URL: http://localhost:8082
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+    ports:
+      - "${DEV_VITE_PORT:-5173}:5173"
+    command: ["npm", "run", "dev", "--", "--host"]
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    init: true
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-certverify_dev}
+      POSTGRES_USER: ${DB_USERNAME:-certverify_dev_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev_secret}
+    ports:
+      - "${DEV_DB_PORT:-54330}:5432"
+    volumes:
+      - dev_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-certverify_dev_user} -d ${DB_DATABASE:-certverify_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  dev_postgres_data:
+  dev_app_storage:
+  dev_bootstrap_cache:

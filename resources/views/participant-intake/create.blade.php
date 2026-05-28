@@ -363,6 +363,164 @@
       box-shadow: 0 12px 24px rgba(13, 95, 151, 0.38);
     }
 
+    .search-input-wrap {
+      position: relative;
+    }
+
+    .search-input-wrap .search-icon {
+      position: absolute;
+      left: 0.82rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #94a3b8;
+      pointer-events: none;
+    }
+
+    .search-input-wrap .field-input {
+      padding-left: 2.4rem;
+    }
+
+    .search-results {
+      position: absolute;
+      z-index: 50;
+      left: 0;
+      right: 0;
+      top: 100%;
+      margin-top: 4px;
+      border-radius: 12px;
+      border: 1px solid #d7e2ee;
+      background: #ffffff;
+      box-shadow: 0 12px 32px rgba(14, 42, 71, 0.15);
+      max-height: 280px;
+      overflow-y: auto;
+    }
+
+    .search-result-item {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      padding: 0.7rem 0.9rem;
+      cursor: pointer;
+      border-bottom: 1px solid #f1f5f9;
+      transition: background-color 120ms ease;
+    }
+
+    .search-result-item:last-child {
+      border-bottom: 0;
+    }
+
+    .search-result-item:hover,
+    .search-result-item:focus {
+      background: #f0f7ff;
+    }
+
+    .search-result-name {
+      font-size: 0.89rem;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .search-result-email {
+      font-size: 0.78rem;
+      color: #64748b;
+    }
+
+    .search-result-org {
+      font-size: 0.76rem;
+      color: #0d5f97;
+      font-weight: 600;
+    }
+
+    .search-result-empty {
+      padding: 0.9rem;
+      text-align: center;
+      font-size: 0.86rem;
+      color: #94a3b8;
+    }
+
+    .verify-panel {
+      border-radius: 12px;
+      border: 1px solid #fcd34d;
+      background: #fffbeb;
+      padding: 0.9rem 1rem;
+    }
+
+    .verify-panel-title {
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: #92400e;
+    }
+
+    .verify-panel-subtitle {
+      margin-top: 0.2rem;
+      font-size: 0.8rem;
+      color: #a16207;
+    }
+
+    .verify-panel .field-input {
+      margin-top: 0.5rem;
+    }
+
+    .verify-panel-actions {
+      margin-top: 0.6rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .verify-btn {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 0;
+      background: #0d5f97;
+      padding: 0.45rem 1rem;
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: #ffffff;
+      cursor: pointer;
+      transition: background-color 140ms ease;
+    }
+
+    .verify-btn:hover {
+      background: #0b4d7a;
+    }
+
+    .verify-cancel {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #64748b;
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+
+    .verify-cancel:hover {
+      color: #334155;
+    }
+
+    .verify-error {
+      margin-top: 0.45rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #dc2626;
+    }
+
+    .returning-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      border-radius: 999px;
+      border: 1px solid #a7f3d0;
+      background: #ecfdf5;
+      padding: 0.2rem 0.65rem;
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #065f46;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
     .section-rise {
       animation: rise 300ms ease;
     }
@@ -503,6 +661,56 @@ This will serve as our reference for post-training documentation and processing.
 
         <div id="intakeFormFields" class="form-stage {{ $hasPrivacyConsent ? 'is-visible' : 'is-hidden' }}">
           <section class="form-block section-rise">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h3 class="form-block-title">Are you a Returning Participant?</h3>
+              <span class="returning-badge">Time Saver</span>
+            </div>
+            <p class="form-block-subtitle">If you have registered before, you can search for your name and auto-fill the form.</p>
+
+            <div class="mt-3">
+              <div class="choice-inline">
+                @foreach (['Yes', 'No'] as $option)
+                  <label class="choice-pill">
+                    <input type="radio" name="is_returning_participant" value="{{ $option }}" @checked(old('is_returning_participant') === $option)>
+                    <span>{{ strtoupper($option) }}</span>
+                  </label>
+                @endforeach
+              </div>
+            </div>
+
+            <div id="returningParticipantSearch" class="mt-3" style="display:none;">
+              <div class="search-input-wrap">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                  id="participantSearchInput"
+                  type="text"
+                  class="field-input"
+                  placeholder="Type your name to search..."
+                  autocomplete="off"
+                >
+                <div id="participantSearchResults" class="search-results" style="display:none;"></div>
+              </div>
+
+              <div id="participantVerifyPanel" class="verify-panel mt-3" style="display:none;">
+                <div class="verify-panel-title">Identity Verification</div>
+                <p class="verify-panel-subtitle">Please enter your registered mobile number to verify your identity.</p>
+                <input
+                  id="participantVerifyInput"
+                  type="tel"
+                  class="field-input"
+                  placeholder="e.g., 09171234567"
+                  autocomplete="off"
+                >
+                <div class="verify-panel-actions">
+                  <button id="participantVerifyBtn" type="button" class="verify-btn">Verify</button>
+                  <button id="participantVerifyCancel" class="verify-cancel">Cancel</button>
+                </div>
+                <div id="participantVerifyError" class="verify-error" style="display:none;"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="form-block section-rise">
             <h3 class="form-block-title">A. Basic Information</h3>
             <p class="form-block-subtitle">Kindly ensure that all information provided is complete and accurate.</p>
 
@@ -542,18 +750,21 @@ This will serve as our reference for post-training documentation and processing.
                 <select class="psgc-region field-input" name="region" data-old="{{ old('region') }}" required>
                   <option value="">-- Select --</option>
                 </select>
+                <span class="psgc-loading text-sm text-gray-500 hidden">Loading...</span>
               </div>
               <div>
                 <label class="field-label">Province</label>
                 <select class="psgc-province field-input" name="province" data-old="{{ old('province') }}" required disabled>
                   <option value="">-- Select --</option>
                 </select>
+                <span class="psgc-loading text-sm text-gray-500 hidden">Loading...</span>
               </div>
               <div>
                 <label class="field-label">City / Municipality</label>
                 <select class="psgc-city field-input" name="city_municipality" data-old="{{ old('city_municipality') }}" required disabled>
                   <option value="">-- Select --</option>
                 </select>
+                <span class="psgc-loading text-sm text-gray-500 hidden">Loading...</span>
               </div>
             </div>
 
@@ -563,6 +774,7 @@ This will serve as our reference for post-training documentation and processing.
                 <select class="psgc-brgy field-input" name="barangay" data-old="{{ old('barangay') }}" required disabled>
                   <option value="">-- Select --</option>
                 </select>
+                <span class="psgc-loading text-sm text-gray-500 hidden">Loading...</span>
               </div>
               <div>
                 <label class="field-label">Block / Lot / Purok (Optional)</label>
@@ -873,158 +1085,632 @@ This will serve as our reference for post-training documentation and processing.
     enforceNotApplicableExclusivity('dost_program_beneficiary');
     enforceNotApplicableExclusivity('directly_employed_programs');
 
-    const psgcUrl = "{{ asset('data/psgc.json') }}";
-    let psgcCache = null;
+    // ============================================================
+    // PSGC Cascading Dropdowns (via API proxy)
+    // ============================================================
 
-    const normalizePsgc = (raw) => {
-      const regions = [];
-      for (const [regionName, regionObj] of Object.entries(raw || {})) {
-        if (typeof regionObj !== 'object') continue;
-        const provinces = [];
-        for (const [provName, provObj] of Object.entries(regionObj)) {
-          if (provName === 'population' || typeof provObj !== 'object') continue;
-          const cities = [];
-          const directBarangays = [];
-          for (const [cityName, cityObj] of Object.entries(provObj)) {
-            if (cityName === 'population' || cityName === 'class' || cityName === 'cityClass' || typeof cityObj !== 'object') continue;
-            const barangays = [];
-            for (const [brgyName, brgyObj] of Object.entries(cityObj)) {
-              if (typeof brgyObj === 'object' && brgyObj !== null && 'population' in brgyObj) {
-                barangays.push(brgyName);
-              }
-            }
-            if (barangays.length === 0 && typeof cityObj.population === 'number') {
-              directBarangays.push(cityName);
-            } else {
-              cities.push({ name: cityName, barangays: barangays.sort((a, b) => a.localeCompare(b)) });
-            }
-          }
-          if (directBarangays.length > 0) {
-            cities.push({ name: provName, barangays: directBarangays.sort((a, b) => a.localeCompare(b)) });
-          }
-          provinces.push({ name: provName, cities });
-        }
-        provinces.sort((a, b) => a.name.localeCompare(b.name));
-        regions.push({ name: regionName, provinces });
-      }
-      regions.sort((a, b) => a.name.localeCompare(b.name));
-      return regions;
-    };
-
-    const loadPsgc = async () => {
-      if (psgcCache) return psgcCache;
-      const res = await fetch(psgcUrl);
-      const raw = await res.json();
-      psgcCache = normalizePsgc(raw);
-      return psgcCache;
-    };
-
-    const clearSelect = (sel, label = '-- Select --') => {
-      sel.innerHTML = '';
-      const opt = document.createElement('option');
-      opt.value = '';
-      opt.textContent = label;
-      sel.appendChild(opt);
-    };
-
-    const initPsgc = async () => {
-      const regionSel = document.querySelector('.psgc-region');
+    (function() {
+      const regionSel   = document.querySelector('.psgc-region');
       const provinceSel = document.querySelector('.psgc-province');
-      const citySel = document.querySelector('.psgc-city');
-      const brgySel = document.querySelector('.psgc-brgy');
+      const citySel     = document.querySelector('.psgc-city');
+      const brgySel     = document.querySelector('.psgc-brgy');
+
       if (!regionSel || !provinceSel || !citySel || !brgySel) return;
 
-      const regions = await loadPsgc();
+      // --- Utilities ---
 
-      const fillRegions = () => {
-        clearSelect(regionSel, '-- Select region --');
-        regions.forEach((r) => {
-          const o = document.createElement('option');
-          o.value = r.name;
-          o.textContent = r.name;
-          regionSel.appendChild(o);
+      const clearSelect = (sel, label) => {
+        sel.innerHTML = '';
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = label || '-- Select --';
+        sel.appendChild(opt);
+      };
+
+      const showLoading = (sel) => {
+        const spinner = sel.parentNode.querySelector('.psgc-loading');
+        if (spinner) spinner.classList.remove('hidden');
+        sel.disabled = true;
+      };
+
+      const hideLoading = (sel) => {
+        const spinner = sel.parentNode.querySelector('.psgc-loading');
+        if (spinner) spinner.classList.add('hidden');
+        sel.disabled = false;
+      };
+
+      const showError = (sel, msg) => {
+        clearSelect(sel);
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = msg || 'Unable to load. Please try again.';
+        opt.disabled = true;
+        sel.appendChild(opt);
+        sel.disabled = true;
+      };
+
+      const populateSelect = (sel, items, placeholder) => {
+        clearSelect(sel, placeholder);
+        items.forEach((item) => {
+          const opt = document.createElement('option');
+          opt.value = item.name;
+          opt.textContent = item.name;
+          opt.dataset.psgcCode = item.psgc_code;
+          sel.appendChild(opt);
         });
       };
 
-      const fillProvinces = (regionName) => {
+      // --- API fetch helpers ---
+
+      const fetchFromProxy = async (endpoint, params = {}) => {
+        const url = new URL(endpoint, window.location.origin);
+        Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+        const res = await fetch(url.toString());
+        if (!res.ok) {
+          console.error('PSGC proxy error:', res.status, res.statusText);
+          return [];
+        }
+        const data = await res.json();
+        if (!Array.isArray(data)) {
+          console.error('PSGC proxy returned non-array:', data);
+          return [];
+        }
+        return data;
+      };
+
+      // --- Cascading loaders ---
+
+      const loadRegions = async () => {
+        showLoading(regionSel);
+        try {
+          const items = await fetchFromProxy('/api/psgc/regions');
+          if (items.length === 0) {
+            showError(regionSel, 'Unable to load regions. Please try again.');
+            return [];
+          }
+          populateSelect(regionSel, items, '-- Select region --');
+          return items;
+        } catch (e) {
+          console.error('Failed to load regions:', e);
+          showError(regionSel, 'Unable to load regions. Please try again.');
+          return [];
+        } finally {
+          hideLoading(regionSel);
+        }
+      };
+
+      const loadProvinces = async (regPsgcCode) => {
         clearSelect(provinceSel, '-- Select province --');
         clearSelect(citySel, '-- Select city/municipality --');
         clearSelect(brgySel, '-- Select barangay --');
-        provinceSel.disabled = !regionName;
         citySel.disabled = true;
         brgySel.disabled = true;
-        const region = regions.find((r) => r.name === regionName);
-        if (!region) return;
-        region.provinces.forEach((p) => {
-          const o = document.createElement('option');
-          o.value = p.name;
-          o.textContent = p.name;
-          provinceSel.appendChild(o);
-        });
+
+        showLoading(provinceSel);
+        provinceSel.disabled = true;
+        try {
+          const items = await fetchFromProxy('/api/psgc/provinces',
+            { reg_code: regPsgcCode });
+          if (items.length === 0) {
+            showError(provinceSel, 'Unable to load provinces. Please try again.');
+            return [];
+          }
+          populateSelect(provinceSel, items, '-- Select province --');
+          provinceSel.disabled = false;
+          return items;
+        } catch (e) {
+          console.error('Failed to load provinces:', e);
+          showError(provinceSel, 'Unable to load provinces. Please try again.');
+          return [];
+        } finally {
+          hideLoading(provinceSel);
+        }
       };
 
-      const fillCities = (regionName, provinceName) => {
+      const loadCities = async (provinceName) => {
         clearSelect(citySel, '-- Select city/municipality --');
         clearSelect(brgySel, '-- Select barangay --');
-        citySel.disabled = !provinceName;
         brgySel.disabled = true;
-        const region = regions.find((r) => r.name === regionName);
-        if (!region) return;
-        const province = region.provinces.find((p) => p.name === provinceName);
-        if (!province) return;
-        province.cities.forEach((c) => {
-          const o = document.createElement('option');
-          o.value = c.name;
-          o.textContent = c.name;
-          citySel.appendChild(o);
-        });
+
+        showLoading(citySel);
+        citySel.disabled = true;
+        try {
+          const items = await fetchFromProxy('/api/psgc/municipalities',
+            { province_name: provinceName });
+          if (items.length === 0) {
+            showError(citySel, 'Unable to load cities. Please try again.');
+            return [];
+          }
+          populateSelect(citySel, items, '-- Select city/municipality --');
+          citySel.disabled = false;
+          return items;
+        } catch (e) {
+          console.error('Failed to load cities:', e);
+          showError(citySel, 'Unable to load cities. Please try again.');
+          return [];
+        } finally {
+          hideLoading(citySel);
+        }
       };
 
-      const fillBarangays = (regionName, provinceName, cityName) => {
+      const loadBarangays = async (cityName, provinceName) => {
         clearSelect(brgySel, '-- Select barangay --');
-        brgySel.disabled = !cityName;
-        const region = regions.find((r) => r.name === regionName);
-        if (!region) return;
-        const province = region.provinces.find((p) => p.name === provinceName);
-        if (!province) return;
-        const city = province.cities.find((c) => c.name === cityName);
-        if (!city) return;
-        city.barangays.forEach((b) => {
-          const o = document.createElement('option');
-          o.value = b;
-          o.textContent = b;
-          brgySel.appendChild(o);
-        });
+
+        showLoading(brgySel);
+        brgySel.disabled = true;
+        try {
+          const items = await fetchFromProxy('/api/psgc/barangays',
+            { city_name: cityName, province_name: provinceName });
+          if (items.length === 0) {
+            showError(brgySel, 'Unable to load barangays. Please try again.');
+            return [];
+          }
+          populateSelect(brgySel, items, '-- Select barangay --');
+          brgySel.disabled = false;
+          return items;
+        } catch (e) {
+          console.error('Failed to load barangays:', e);
+          showError(brgySel, 'Unable to load barangays. Please try again.');
+          return [];
+        } finally {
+          hideLoading(brgySel);
+        }
       };
 
-      regionSel.addEventListener('change', (e) => fillProvinces(e.target.value));
-      provinceSel.addEventListener('change', (e) => fillCities(regionSel.value, e.target.value));
-      citySel.addEventListener('change', (e) => fillBarangays(regionSel.value, provinceSel.value, e.target.value));
+      // --- Helper: get selected option's value (name) ---
 
-      fillRegions();
+      const selectedValue = (sel) => {
+        const opt = sel.selectedOptions[0];
+        return opt ? opt.value : '';
+      };
 
-      const oldRegion = regionSel.dataset.old || '';
-      const oldProvince = provinceSel.dataset.old || '';
-      const oldCity = citySel.dataset.old || '';
-      const oldBarangay = brgySel.dataset.old || '';
+      const selectedPsgcCode = (sel) => {
+        const opt = sel.selectedOptions[0];
+        return opt ? (opt.dataset.psgcCode || '') : '';
+      };
 
-      if (oldRegion) {
+      // --- Event handlers ---
+
+      regionSel.addEventListener('change', async function () {
+        const code = selectedPsgcCode(this);
+        if (code) {
+          await loadProvinces(code);
+        } else {
+          clearSelect(provinceSel, '-- Select province --');
+          clearSelect(citySel, '-- Select city/municipality --');
+          clearSelect(brgySel, '-- Select barangay --');
+          provinceSel.disabled = true;
+          citySel.disabled = true;
+          brgySel.disabled = true;
+        }
+      });
+
+      provinceSel.addEventListener('change', async function () {
+        const name = selectedValue(this);
+        if (name) {
+          await loadCities(name);
+        } else {
+          clearSelect(citySel, '-- Select city/municipality --');
+          clearSelect(brgySel, '-- Select barangay --');
+          citySel.disabled = true;
+          brgySel.disabled = true;
+        }
+      });
+
+      citySel.addEventListener('change', async function () {
+        const cityName = selectedValue(this);
+        const provinceName = selectedValue(provinceSel);
+        if (cityName && provinceName) {
+          await loadBarangays(cityName, provinceName);
+        } else {
+          clearSelect(brgySel, '-- Select barangay --');
+          brgySel.disabled = true;
+        }
+      });
+
+      // --- Repopulate from old() values (validation failure) ---
+
+      const repopulateOldValues = async () => {
+        const oldRegion   = regionSel.dataset.old || '';
+        const oldProvince = provinceSel.dataset.old || '';
+        const oldCity     = citySel.dataset.old || '';
+        const oldBarangay = brgySel.dataset.old || '';
+
+        if (!oldRegion) return;
+
         regionSel.value = oldRegion;
-        fillProvinces(oldRegion);
-      }
-      if (oldProvince) {
-        provinceSel.value = oldProvince;
-        fillCities(oldRegion, oldProvince);
-      }
-      if (oldCity) {
-        citySel.value = oldCity;
-        fillBarangays(oldRegion, oldProvince, oldCity);
-      }
-      if (oldBarangay) {
-        brgySel.value = oldBarangay;
-      }
-    };
+        if (regionSel.value !== oldRegion) return;
 
-    initPsgc();
+        const regCode = selectedPsgcCode(regionSel);
+        if (!regCode) return;
+
+        if (!oldProvince) return;
+        await loadProvinces(regCode);
+        provinceSel.value = oldProvince;
+        if (provinceSel.value !== oldProvince) return;
+
+        const provinceName = selectedValue(provinceSel);
+        if (!provinceName) return;
+
+        if (!oldCity) return;
+        await loadCities(provinceName);
+        citySel.value = oldCity;
+        if (citySel.value !== oldCity) return;
+
+        const cityName = selectedValue(citySel);
+        if (!cityName) return;
+
+        if (!oldBarangay) return;
+        await loadBarangays(cityName, provinceName);
+        brgySel.value = oldBarangay;
+      };
+
+      // --- Initialize ---
+
+      loadRegions().then(() => repopulateOldValues());
+    })();
+
+    // ============================================================
+    // Returning Participant Search & Auto-Fill
+    // ============================================================
+
+    (function() {
+      const returningRadios = document.querySelectorAll('input[name="is_returning_participant"]');
+      const searchArea = document.getElementById('returningParticipantSearch');
+      const searchInput = document.getElementById('participantSearchInput');
+      const searchResults = document.getElementById('participantSearchResults');
+      const verifyPanel = document.getElementById('participantVerifyPanel');
+      const verifyInput = document.getElementById('participantVerifyInput');
+      const verifyBtn = document.getElementById('participantVerifyBtn');
+      const verifyCancel = document.getElementById('participantVerifyCancel');
+      const verifyError = document.getElementById('participantVerifyError');
+      const form = document.getElementById('participantIntakeForm');
+
+      if (!returningRadios.length || !searchArea || !searchInput || !searchResults) return;
+
+      let debounceTimer;
+      let selectedParticipant = null;
+
+      const escapeHtml = (str) => {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(str || ''));
+        return div.innerHTML;
+      };
+
+      const normalizeMobile = (num) => {
+        if (!num) return '';
+        return num.replace(/\D/g, '');
+      };
+
+      // --- Toggle search area ---
+
+      returningRadios.forEach(function(radio) {
+        radio.addEventListener('change', function() {
+          if (radio.value === 'Yes' && radio.checked) {
+            searchArea.style.display = '';
+            setTimeout(function() { searchInput.focus(); }, 100);
+          } else {
+            searchArea.style.display = 'none';
+            searchInput.value = '';
+            searchResults.style.display = 'none';
+            searchResults.innerHTML = '';
+            selectedParticipant = null;
+            hideVerifyPanel();
+          }
+        });
+      });
+
+      // --- Close dropdown when clicking outside ---
+
+      document.addEventListener('click', function(e) {
+        if (!searchArea.contains(e.target)) {
+          searchResults.style.display = 'none';
+        }
+      });
+
+      // --- Debounced search ---
+
+      searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        hideVerifyPanel();
+        var q = searchInput.value.trim();
+        if (q.length < 2) {
+          searchResults.style.display = 'none';
+          searchResults.innerHTML = '';
+          return;
+        }
+        debounceTimer = setTimeout(function() {
+          fetch('/api/participants/search?q=' + encodeURIComponent(q))
+            .then(function(res) { return res.json(); })
+            .then(function(data) { renderResults(data); })
+            .catch(function(e) {
+              console.error('Participant search failed:', e);
+              searchResults.style.display = 'none';
+            });
+        }, 300);
+      });
+
+      // --- Show/hide verify panel ---
+
+      function showVerifyPanel(participant) {
+        selectedParticipant = participant;
+        searchResults.style.display = 'none';
+        searchResults.innerHTML = '';
+        if (verifyPanel) verifyPanel.style.display = '';
+        if (verifyInput) {
+          verifyInput.value = '';
+          setTimeout(function() { verifyInput.focus(); }, 100);
+        }
+        if (verifyError) verifyError.style.display = 'none';
+      }
+
+      function hideVerifyPanel() {
+        selectedParticipant = null;
+        if (verifyPanel) verifyPanel.style.display = 'none';
+        if (verifyInput) verifyInput.value = '';
+        if (verifyError) verifyError.style.display = 'none';
+      }
+
+      // --- Verify button handler ---
+
+      if (verifyBtn) {
+        verifyBtn.addEventListener('click', function() {
+          if (!selectedParticipant) return;
+          var entered = normalizeMobile(verifyInput.value.trim());
+          var expected = normalizeMobile(selectedParticipant.contact_number);
+
+          if (!entered) {
+            if (verifyError) {
+              verifyError.textContent = 'Please enter your mobile number.';
+              verifyError.style.display = '';
+            }
+            return;
+          }
+
+          if (entered === expected) {
+            var participant = selectedParticipant;
+            hideVerifyPanel();
+            searchInput.value = participant.participant_name;
+            autofillForm(participant);
+          } else {
+            if (verifyError) {
+              verifyError.textContent = 'The mobile number does not match our records. Please try again.';
+              verifyError.style.display = '';
+            }
+            if (verifyInput) verifyInput.value = '';
+          }
+        });
+
+        verifyInput.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            verifyBtn.click();
+          }
+        });
+      }
+
+      // --- Cancel button handler ---
+
+      if (verifyCancel) {
+        verifyCancel.addEventListener('click', function() {
+          hideVerifyPanel();
+          searchInput.value = '';
+          searchInput.focus();
+        });
+      }
+
+      // --- Render dropdown (name only, no email/org) ---
+
+      function renderResults(participants) {
+        searchResults.innerHTML = '';
+        if (!participants.length) {
+          searchResults.innerHTML = '<div class="search-result-empty">No matching participants found.</div>';
+          searchResults.style.display = '';
+          return;
+        }
+        participants.forEach(function(p) {
+          var item = document.createElement('div');
+          item.className = 'search-result-item';
+          item.innerHTML = '<span class="search-result-name">' + escapeHtml(p.participant_name) + '</span>';
+          item.addEventListener('click', function() { showVerifyPanel(p); });
+          searchResults.appendChild(item);
+        });
+        searchResults.style.display = '';
+      }
+
+      // --- Helper: set value on a text/email/tel input ---
+
+      function setInputValue(selector, value) {
+        var el = document.querySelector(selector);
+        if (el && value) {
+          el.value = value;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+
+      // --- Helper: set value on a select ---
+
+      function setSelectValue(selector, value) {
+        var el = document.querySelector(selector);
+        if (!el || !value) return;
+        for (var i = 0; i < el.options.length; i++) {
+          if (el.options[i].value === value) {
+            el.value = value;
+            return;
+          }
+        }
+        // Value not in options yet; try setting directly
+        el.value = value;
+      }
+
+      // --- Helper: set radio button by name ---
+
+      function setRadioValue(name, value) {
+        if (!value) return;
+        var radios = document.querySelectorAll('input[name="' + name + '"]');
+        radios.forEach(function(r) {
+          r.checked = (r.value === value);
+        });
+      }
+
+      // --- Helper: set checkboxes by name ---
+
+      function setCheckboxValues(name, values) {
+        if (!values || !values.length) return;
+        var boxes = document.querySelectorAll('input[name="' + name + '"]');
+        boxes.forEach(function(b) {
+          var shouldCheck = (values.indexOf(b.value) !== -1);
+          if (b.checked !== shouldCheck) {
+            b.checked = shouldCheck;
+            b.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+      }
+
+      // --- Helper: wait for a select to be ready (enabled + populated) ---
+
+      function waitForSelectReady(sel, timeout) {
+        timeout = timeout || 5000;
+        var start = Date.now();
+        return new Promise(function(resolve) {
+          function check() {
+            if (!sel.disabled && sel.options.length > 1) {
+              resolve(true);
+              return;
+            }
+            if (Date.now() - start > timeout) {
+              resolve(false);
+              return;
+            }
+            setTimeout(check, 80);
+          }
+          check();
+        });
+      }
+
+      // --- Auto-fill PSGC cascading dropdowns ---
+
+      async function autofillPsgc(participant) {
+        var regionSel = document.querySelector('.psgc-region');
+        var provinceSel = document.querySelector('.psgc-province');
+        var citySel = document.querySelector('.psgc-city');
+        var brgySel = document.querySelector('.psgc-brgy');
+
+        if (!regionSel || !provinceSel || !citySel || !brgySel) return;
+
+        // Set region
+        if (participant.region && regionSel.value !== participant.region) {
+          regionSel.value = participant.region;
+          regionSel.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitForSelectReady(provinceSel);
+        }
+
+        // Set province
+        if (participant.province && provinceSel.value !== participant.province && !provinceSel.disabled) {
+          provinceSel.value = participant.province;
+          provinceSel.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitForSelectReady(citySel);
+        }
+
+        // Set city
+        if (participant.city_municipality && citySel.value !== participant.city_municipality && !citySel.disabled) {
+          citySel.value = participant.city_municipality;
+          citySel.dispatchEvent(new Event('change', { bubbles: true }));
+          await waitForSelectReady(brgySel);
+        }
+
+        // Set barangay
+        if (participant.barangay && !brgySel.disabled) {
+          brgySel.value = participant.barangay;
+        }
+      }
+
+      // --- Main auto-fill function ---
+
+      async function autofillForm(participant) {
+        selectedParticipant = participant;
+
+        // Update search input to show selected name
+        searchInput.value = participant.participant_name;
+        searchResults.style.display = 'none';
+        searchResults.innerHTML = '';
+
+        // Basic info
+        setInputValue('input[name="first_name"]', participant.first_name);
+        setInputValue('input[name="middle_initial"]', participant.middle_initial);
+        setInputValue('input[name="last_name"]', participant.last_name);
+        setInputValue('input[name="email"]', participant.email);
+        setInputValue('input[name="contact_number"]', participant.contact_number);
+
+        // Demographic
+        setSelectValue('select[name="gender"]', participant.gender);
+        setSelectValue('select[name="age_range"]', participant.age_range);
+        setRadioValue('pwd_status', participant.pwd_status);
+
+        // Socio-economic
+        setRadioValue('is_4ps_beneficiary', participant.is_4ps_beneficiary);
+
+        // Priority community
+        setRadioValue('is_elcac_community', participant.is_elcac_community);
+
+        // Organization profile
+        setInputValue('input[name="organization_name"]', participant.organization_name);
+        setSelectValue('select[name="industry"]', participant.industry);
+        setInputValue('input[name="position_designation"]', participant.position_designation);
+
+        // DOST engagement
+        var beneficiaryPrograms = participant.dost_program_beneficiary || [];
+        if (typeof beneficiaryPrograms === 'string') {
+          try { beneficiaryPrograms = JSON.parse(beneficiaryPrograms); } catch(e) { beneficiaryPrograms = [beneficiaryPrograms]; }
+        }
+        setCheckboxValues('dost_program_beneficiary[]', beneficiaryPrograms);
+
+        var employedPrograms = participant.directly_employed_programs || [];
+        if (typeof employedPrograms === 'string') {
+          try { employedPrograms = JSON.parse(employedPrograms); } catch(e) { employedPrograms = [employedPrograms]; }
+        }
+        setCheckboxValues('directly_employed_programs[]', employedPrograms);
+
+        // Participation history
+        setRadioValue('has_attended_dost_training', participant.has_attended_dost_training);
+
+        // Service interest
+        var interestedServices = participant.interested_dost_services || [];
+        if (typeof interestedServices === 'string') {
+          try { interestedServices = JSON.parse(interestedServices); } catch(e) { interestedServices = [interestedServices]; }
+        }
+        setCheckboxValues('interested_dost_services[]', interestedServices);
+
+        // "Others" toggle for service interest
+        var otherWrap = document.getElementById('interestedServiceOtherWrap');
+        var otherInput = document.getElementById('interestedServiceOtherInput');
+        if (otherWrap && otherInput) {
+          if (interestedServices.indexOf('Others') !== -1) {
+            otherWrap.style.display = '';
+            otherInput.required = true;
+            if (participant.interested_dost_services_other) {
+              otherInput.value = participant.interested_dost_services_other;
+            }
+          } else {
+            otherWrap.style.display = 'none';
+            otherInput.required = false;
+            otherInput.value = '';
+          }
+        }
+
+        // Geo
+        setInputValue('input[name="block_lot_purok"]', participant.block_lot_purok);
+
+        // PSGC cascading (async)
+        await autofillPsgc(participant);
+      }
+
+      // --- Initialize: show search if "Yes" was old() value ---
+
+      var oldReturning = document.querySelector('input[name="is_returning_participant"][value="Yes"]');
+      if (oldReturning && oldReturning.checked) {
+        searchArea.style.display = '';
+      }
+    })();
   </script>
 </x-public-layout>

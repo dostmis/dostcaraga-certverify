@@ -8,6 +8,8 @@ use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ParticipantIntakeAdminController;
 use App\Http\Controllers\Admin\UserAdminController;
 use App\Http\Controllers\CertificatePublicController;
+use App\Http\Controllers\Api\ParticipantSearchController;
+use App\Http\Controllers\Api\PsgcController;
 use App\Http\Controllers\ParticipantIntakeController;
 use App\Http\Controllers\TelegramWebhookController;
 use Illuminate\Support\Facades\File;
@@ -97,6 +99,15 @@ Route::post('/participant-intake/{token}', [ParticipantIntakeController::class, 
 
 Route::post('/webhooks/telegram/{secret}', TelegramWebhookController::class)
     ->name('webhooks.telegram');
+
+Route::get('/api/participants/search', [ParticipantSearchController::class, 'search']);
+
+Route::prefix('api/psgc')->group(function () {
+    Route::get('/regions', [PsgcController::class, 'regions']);
+    Route::get('/provinces', [PsgcController::class, 'provinces']);
+    Route::get('/municipalities', [PsgcController::class, 'municipalities']);
+    Route::get('/barangays', [PsgcController::class, 'barangays']);
+});
 
 Route::get('/app/{any?}', function () {
     return File::get(public_path('app/index.html'));

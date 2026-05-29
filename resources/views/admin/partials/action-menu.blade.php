@@ -219,6 +219,7 @@
     @if ($menuIsRegionalDirector)
       <div class="admin-action-menu-separator"></div>
       <a href="{{ route('admin.users.index') }}" class="admin-action-menu-item" @click="open = false">Users</a>
+      <a href="{{ route('admin.users.claimed') }}" class="admin-action-menu-item" @click="open = false">Claimed Recipients</a>
       <a href="{{ route('admin.account-settings.edit') }}" class="admin-action-menu-item" @click="open = false">Account Settings</a>
     @endif
 

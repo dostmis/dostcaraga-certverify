@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Recipient;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -84,5 +85,24 @@ class UserAdminController extends Controller
         ]);
 
         return back()->with('success', 'User role updated successfully.');
+    }
+
+    public function claimedRecipients(Request $request): View
+    {
+        $query = Recipient::whereNotNull('password')
+            ->withCount('certificates')
+            ->orderByDesc('updated_at');
+
+        if ($search = $request->get('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'ILIKE', "%{$search}%")
+                  ->orWhere('email', 'ILIKE', "%{$search}%")
+                  ->orWhere('contact_number', 'ILIKE', "%{$search}%");
+            });
+        }
+
+        $recipients = $query->paginate(15)->withQueryString();
+
+        return view('admin.users.claimed-recipients', compact('recipients', 'search'));
     }
 }

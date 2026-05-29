@@ -73,6 +73,7 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
         Route::post('/participant-intakes/toggle', [ParticipantIntakeAdminController::class, 'toggleIntake'])->name('admin.participant-intakes.toggle');
 
         Route::get('/users', [UserAdminController::class, 'index'])->name('admin.users.index');
+        Route::get('/users/claimed', [UserAdminController::class, 'claimedRecipients'])->name('admin.users.claimed');
         Route::post('/users/{id}/role', [UserAdminController::class, 'updateRole'])->name('admin.users.role');
         Route::post('/users/{id}/approve', [UserAdminController::class, 'approve'])->name('admin.users.approve');
         Route::post('/users/{id}/reject', [UserAdminController::class, 'reject'])->name('admin.users.reject');

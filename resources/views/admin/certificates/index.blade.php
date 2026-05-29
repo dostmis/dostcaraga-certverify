@@ -302,6 +302,13 @@
       border-radius: 14px;
       background: #fff;
       padding: 12px;
+      cursor: default;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .cert-stat:hover {
+      border-color: #94a3b8;
+      box-shadow: 0 6px 20px rgba(15,23,42,0.08);
     }
 
     .cert-stat h3 {
@@ -385,6 +392,34 @@
       color: #312e81;
     }
 
+    .cert-stat.amber {
+      border-color: #fde68a;
+      background: linear-gradient(150deg, #fffbeb 0%, #fff 100%);
+    }
+
+    .cert-stat.amber h3,
+    .cert-stat.amber p {
+      color: #b45309;
+    }
+
+    .cert-stat.amber strong {
+      color: #78350f;
+    }
+
+    .cert-stat.red {
+      border-color: #fecaca;
+      background: linear-gradient(150deg, #fef2f2 0%, #fff 100%);
+    }
+
+    .cert-stat.red h3,
+    .cert-stat.red p {
+      color: #b91c1c;
+    }
+
+    .cert-stat.red strong {
+      color: #7f1d1d;
+    }
+
     .cert-table-wrap {
       margin-top: 14px;
       border: 1px solid #dbe5ef;
@@ -425,6 +460,10 @@
       color: #334155;
       vertical-align: middle;
       background: #fff;
+    }
+
+    .cert-table tbody tr {
+      transition: background 0.15s;
     }
 
     .cert-table tbody tr:hover td {
@@ -562,7 +601,14 @@
       font-size: 14px;
       color: #64748b;
       font-weight: 600;
-      padding: 44px 12px;
+      padding: 56px 12px;
+      opacity: 0.75;
+    }
+
+    .cert-empty svg {
+      display: block;
+      margin: 0 auto 12px;
+      color: #cbd5e1;
     }
 
     .cert-muted {
@@ -842,7 +888,10 @@
                     </tr>
                   @empty
                     <tr>
-                      <td colspan="8" class="cert-empty">No training groups found.</td>
+                      <td colspan="8" class="cert-empty">
+                        <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        No training groups found.
+                      </td>
                     </tr>
                   @endforelse
                 </tbody>
@@ -898,7 +947,10 @@
                     </tr>
                   @empty
                     <tr>
-                      <td colspan="6" class="cert-empty">No endorsements submitted yet.</td>
+                      <td colspan="6" class="cert-empty">
+                        <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        No endorsements submitted yet.
+                      </td>
                     </tr>
                   @endforelse
                 </tbody>
@@ -955,7 +1007,10 @@
                     </tr>
                   @empty
                     <tr>
-                      <td colspan="7" class="cert-empty">No certificates found.</td>
+                      <td colspan="7" class="cert-empty">
+                        <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35"/></svg>
+                        No certificates found.
+                      </td>
                     </tr>
                   @endforelse
                 </tbody>

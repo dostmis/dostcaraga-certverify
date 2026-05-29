@@ -18,6 +18,7 @@ class Certificate extends Model
         'public_token',
         'participant_name',
         'email',
+        'recipient_id',
         'gender',
         'age',
         'block_lot_purok',
@@ -75,6 +76,16 @@ class Certificate extends Model
                 $cert->public_token = (string) Str::uuid();
             }
         });
+    }
+
+    public function recipient(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Recipient::class);
+    }
+
+    public function hasRecipient(): bool
+    {
+        return $this->recipient_id !== null;
     }
 
     public function isValid(): bool

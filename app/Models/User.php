@@ -86,4 +86,9 @@ class User extends Authenticatable
     {
         return $this->hasRole(self::ROLE_REGIONAL_DIRECTOR) || (bool) $this->is_admin;
     }
+
+    public function recipient(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Recipient::class);
+    }
 }

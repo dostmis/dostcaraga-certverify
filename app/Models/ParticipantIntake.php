@@ -9,6 +9,7 @@ class ParticipantIntake extends Model
     protected $fillable = [
         'participant_intake_event_id',
         'owner_user_id',
+        'recipient_id',
         'participant_name',
         'last_name',
         'first_name',
@@ -57,5 +58,10 @@ class ParticipantIntake extends Model
     public function intakeEvent()
     {
         return $this->belongsTo(ParticipantIntakeEvent::class, 'participant_intake_event_id');
+    }
+
+    public function recipient(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Recipient::class);
     }
 }

@@ -56,6 +56,35 @@ class CertificatePublicController extends Controller
         return view('certificate.print', compact('cert', 'verifyUrl', 'regionalDirectorSignatory'));
     }
 
+    public function preview(Request $request)
+    {
+        $t = $request->query('t');
+
+        if (!$t) {
+            abort(404, 'Missing token.');
+        }
+
+        $cert = Certificate::where('public_token', $t)->firstOrFail();
+
+        if (!$cert->isValid()) {
+            abort(403, 'Certificate is not valid for preview.');
+        }
+
+        if (empty($cert->stamped_pdf_path)) {
+            abort(404, 'Stamped PDF not yet available.');
+        }
+
+        $storage = $this->resolveCertificateStorage((string) $cert->stamped_pdf_path);
+        if (!$storage) {
+            abort(404, 'File missing in storage.');
+        }
+
+        return $storage['disk']->response($storage['path'], null, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $cert->certificate_code . '.pdf"',
+        ]);
+    }
+
     public function download(Request $request)
     {
         $t = $request->query('t');

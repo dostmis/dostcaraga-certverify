@@ -19,12 +19,27 @@ class CertificateReadyMail extends Mailable
 
     public function build(): self
     {
+        $recipient = $this->certificate->recipient;
+        $claimUrl = null;
+        $isDormant = false;
+
+        if ($recipient) {
+            $isDormant = ! $recipient->isClaimed();
+            if ($isDormant && $recipient->claim_token) {
+                $claimUrl = $this->baseUrl() . route('recipient.claim.form', [
+                    'token' => $recipient->claim_token,
+                ], false);
+            }
+        }
+
         $mail = $this->subject($this->subjectLine())
             ->view('emails.certificates.ready', [
                 'certificate' => $this->certificate,
                 'downloadUrl' => $this->downloadUrl(),
                 'verifyUrl' => $this->verifyUrl(),
                 'dateRange' => $this->dateRange(),
+                'claimUrl' => $claimUrl,
+                'isDormant' => $isDormant,
             ]);
 
         $attachment = $this->certificateAttachmentPath();

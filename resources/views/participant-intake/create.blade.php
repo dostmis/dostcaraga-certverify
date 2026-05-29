@@ -110,29 +110,118 @@
       align-self: center;
     }
 
-    .status-box {
-      margin: 1.5rem 1.5rem 0;
-      border-radius: 14px;
-      padding: 0.85rem 1rem;
-      font-size: 0.92rem;
-      line-height: 1.5;
+    .toast-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 9998;
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      animation: fadeIn 0.25s ease;
     }
 
-    .status-box.success {
-      border: 1px solid #a7f3d0;
-      background: #ecfdf5;
+    .toast-backdrop.fade-out {
+      animation: fadeOut 0.2s ease forwards;
+    }
+
+    .toast-container {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .toast {
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 18px 20px;
+      border-radius: 18px;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.30);
+      animation: toastPop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      font-size: 0.92rem;
+      line-height: 1.55;
+      font-weight: 600;
+      max-width: min(92vw, 480px);
+      width: 100%;
+    }
+
+    .toast.toast-out {
+      animation: toastPopOut 0.2s ease forwards;
+    }
+
+    .toast-success {
+      background: rgba(236, 253, 245, 0.97);
+      border: 1.5px solid #86efac;
       color: #065f46;
     }
 
-    .status-box.error {
-      border: 1px solid #fecaca;
-      background: #fef2f2;
+    .toast-error {
+      background: rgba(254, 242, 242, 0.97);
+      border: 1.5px solid #fca5a5;
       color: #991b1b;
     }
 
-    .status-box ul {
-      margin: 0.5rem 0 0;
-      padding-left: 1.2rem;
+    .toast-icon {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      margin-top: 1px;
+    }
+
+    .toast-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .toast-body ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      font-weight: 500;
+    }
+
+    .toast-close {
+      flex-shrink: 0;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: inherit;
+      opacity: 0.45;
+      padding: 3px;
+      border-radius: 8px;
+      transition: opacity 0.15s, background 0.15s;
+      margin-top: 0;
+    }
+
+    .toast-close:hover {
+      opacity: 1;
+      background: rgba(0,0,0,0.06);
+    }
+
+    @keyframes toastPop {
+      from { opacity: 0; transform: scale(0.90) translateY(10px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    @keyframes toastPopOut {
+      from { opacity: 1; transform: scale(1) translateY(0); }
+      to   { opacity: 0; transform: scale(0.92) translateY(-8px); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to   { opacity: 0; }
     }
 
     .form-area {
@@ -296,6 +385,14 @@
       outline: none;
     }
 
+    .field-hint {
+      margin-top: 4px;
+      font-size: 0.76rem;
+      color: #0d5f97;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
     .choice-grid {
       display: flex;
       flex-wrap: wrap;
@@ -385,13 +482,13 @@
       z-index: 50;
       left: 0;
       right: 0;
-      top: 100%;
-      margin-top: 4px;
+      bottom: 100%;
+      margin-bottom: 4px;
       border-radius: 12px;
       border: 1px solid #d7e2ee;
       background: #ffffff;
-      box-shadow: 0 12px 32px rgba(14, 42, 71, 0.15);
-      max-height: 280px;
+      box-shadow: 0 -4px 32px rgba(14, 42, 71, 0.18);
+      max-height: 260px;
       overflow-y: auto;
     }
 
@@ -536,7 +633,7 @@
       }
 
       .intake-brand-main {
-        align-items: flex-start;
+        align-items: center;
       }
 
       .intake-logo-wrap {
@@ -586,24 +683,10 @@ This will serve as our reference for post-training documentation and processing.
         </div>
       </div>
 
-      @if (session('success'))
-        <div class="status-box success">
-          <div class="font-bold">{{ session('success') }}</div>
-        </div>
-      @endif
-
-      @if ($errors->any())
-        <div class="status-box error">
-          <div class="font-bold">Please check the form:</div>
-          <ul>
-            @foreach ($errors->all() as $error)
-              <li>{{ $error }}</li>
-            @endforeach
-          </ul>
-        </div>
-      @endif
+      <div class="toast-container" id="toastContainer"></div>
 
       @php
+        $loggedInRecipient = $loggedInRecipient ?? null;
         $hasPrivacyConsent = in_array(old('privacy_consent'), ['1', 1, true, 'true', 'on', 'yes'], true);
         $oldBeneficiaryPrograms = old('dost_program_beneficiary', []);
         if (!is_array($oldBeneficiaryPrograms)) {
@@ -621,6 +704,13 @@ This will serve as our reference for post-training documentation and processing.
 
       <form id="participantIntakeForm" method="POST" action="{{ route('participant.intake.submit', ['token' => $intakeEvent->public_token]) }}" class="form-area space-y-5">
         @csrf
+
+        @if (!empty($loggedInRecipient))
+          <div class="rounded-lg bg-indigo-50 border border-indigo-200 p-4 text-sm text-indigo-800">
+            <p class="font-semibold">Welcome back, {{ $loggedInRecipient->name }}!</p>
+            <p class="mt-1">Your details are pre-filled from your CERTiFY account. Any updates you make here will not change your account profile.</p>
+          </div>
+        @endif
 
         <section class="consent-panel section-rise">
           <div class="consent-head">
@@ -665,7 +755,7 @@ This will serve as our reference for post-training documentation and processing.
               <h3 class="form-block-title">Are you a Returning Participant?</h3>
               <span class="returning-badge">Time Saver</span>
             </div>
-            <p class="form-block-subtitle">If you have registered before, you can search for your name and auto-fill the form.</p>
+            <p class="form-block-subtitle">If you have registered before, you can search for your name and auto-fill and submits the form.</p>
 
             <div class="mt-3">
               <div class="choice-inline">
@@ -710,6 +800,8 @@ This will serve as our reference for post-training documentation and processing.
             </div>
           </section>
 
+          <div id="intakeFormSections" style="display:none;">
+
           <section class="form-block section-rise">
             <h3 class="form-block-title">A. Basic Information</h3>
             <p class="form-block-subtitle">Kindly ensure that all information provided is complete and accurate.</p>
@@ -717,7 +809,7 @@ This will serve as our reference for post-training documentation and processing.
             <div class="mt-4 grid gap-4 sm:grid-cols-3">
               <div>
                 <label class="field-label">First Name</label>
-                <input name="first_name" value="{{ old('first_name') }}" required class="field-input">
+                <input name="first_name" value="{{ old('first_name', $loggedInRecipient ? explode(' ', $loggedInRecipient->name)[0] ?? '' : '') }}" required class="field-input">
               </div>
               <div>
                 <label class="field-label">Middle Initial (Optional)</label>
@@ -732,11 +824,12 @@ This will serve as our reference for post-training documentation and processing.
             <div class="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
                 <label class="field-label">Email</label>
-                <input type="email" name="email" value="{{ old('email') }}" required class="field-input">
+                <input type="email" name="email" value="{{ old('email', $loggedInRecipient->email ?? '') }}" required class="field-input" placeholder="your.email@example.com">
+                <p class="field-hint">This will serve as your certificate repository account. Make sure it's correct.</p>
               </div>
               <div>
                 <label class="field-label">Contact Number</label>
-                <input type="tel" name="contact_number" value="{{ old('contact_number') }}" required class="field-input" placeholder="e.g., 09171234567">
+                <input type="tel" name="contact_number" value="{{ old('contact_number', $loggedInRecipient->contact_number ?? '') }}" required class="field-input" placeholder="e.g., 09171234567">
               </div>
             </div>
           </section>
@@ -791,8 +884,8 @@ This will serve as our reference for post-training documentation and processing.
                 <label class="field-label">Sex</label>
                 <select name="gender" required class="field-input">
                   <option value="">-- Select --</option>
-                  <option value="Male" @selected(old('gender') === 'Male')>Male</option>
-                  <option value="Female" @selected(old('gender') === 'Female')>Female</option>
+                  <option value="Male" @selected(old('gender', $loggedInRecipient->gender ?? '') === 'Male')>Male</option>
+                  <option value="Female" @selected(old('gender', $loggedInRecipient->gender ?? '') === 'Female')>Female</option>
                 </select>
               </div>
               <div>
@@ -981,12 +1074,88 @@ This will serve as our reference for post-training documentation and processing.
               Submit Form
             </button>
           </div>
-        </div>
+
+          </div>{{-- end #intakeFormSections --}}
+        </div>{{-- end #intakeFormFields --}}
       </form>
     </div>
   </div>
 
   <script>
+    // ── Toast notifications (centered + dim backdrop) ──
+    (function() {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+
+      const icons = {
+        success: '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+        error: '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+      };
+
+      const closeSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+      let backdrop = null;
+
+      function removeBackdrop() {
+        if (backdrop) {
+          backdrop.classList.add('fade-out');
+          setTimeout(function() { if (backdrop && backdrop.parentNode) backdrop.remove(); backdrop = null; }, 200);
+        }
+      }
+
+      function dismissToast(toast) {
+        toast.classList.add('toast-out');
+        removeBackdrop();
+        setTimeout(function() { if (toast.parentNode) toast.remove(); }, 200);
+      }
+
+      window.showToast = function(type, message, errorsList) {
+        // Remove existing backdrop first
+        removeBackdrop();
+
+        // Create dim backdrop
+        backdrop = document.createElement('div');
+        backdrop.className = 'toast-backdrop';
+        backdrop.addEventListener('click', function() {
+          var t = container.querySelector('.toast');
+          if (t) dismissToast(t);
+        });
+        document.body.appendChild(backdrop);
+
+        // Create toast
+        const toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        let bodyHtml = '<div class="toast-body"><div>' + message + '</div>';
+        if (errorsList && errorsList.length) {
+          bodyHtml += '<ul>' + errorsList.map(function(e) { return '<li>' + e + '</li>'; }).join('') + '</ul>';
+        }
+        bodyHtml += '</div>';
+        toast.innerHTML = icons[type] + bodyHtml + '<button class="toast-close">' + closeSvg + '</button>';
+
+        // Close handler
+        toast.querySelector('.toast-close').addEventListener('click', function() {
+          dismissToast(toast);
+        });
+
+        container.appendChild(toast);
+
+        if (type === 'success') {
+          setTimeout(function() {
+            if (toast.parentNode) dismissToast(toast);
+          }, 5000);
+        }
+      };
+
+      // Render server-side messages
+      @if (session('success'))
+        showToast('success', {!! json_encode(session('success')) !!});
+      @endif
+
+      @if ($errors->any())
+        showToast('error', 'Please check the form:', {!! json_encode($errors->all()) !!});
+      @endif
+    })();
+
     const privacyConsentCheckbox = document.getElementById('privacyConsentCheckbox');
     const intakeFormFields = document.getElementById('intakeFormFields');
     const toggleIntakeFields = () => {
@@ -1386,8 +1555,10 @@ This will serve as our reference for post-training documentation and processing.
 
       returningRadios.forEach(function(radio) {
         radio.addEventListener('change', function() {
+          var formSections = document.getElementById('intakeFormSections');
           if (radio.value === 'Yes' && radio.checked) {
             searchArea.style.display = '';
+            if (formSections) formSections.style.display = 'none';
             setTimeout(function() { searchInput.focus(); }, 100);
           } else {
             searchArea.style.display = 'none';
@@ -1396,6 +1567,7 @@ This will serve as our reference for post-training documentation and processing.
             searchResults.innerHTML = '';
             selectedParticipant = null;
             hideVerifyPanel();
+            if (formSections) formSections.style.display = '';
           }
         });
       });
@@ -1471,7 +1643,23 @@ This will serve as our reference for post-training documentation and processing.
             var participant = selectedParticipant;
             hideVerifyPanel();
             searchInput.value = participant.participant_name;
-            autofillForm(participant);
+            searchInput.disabled = true;
+            // Ensure privacy consent is checked for auto-submit
+            if (privacyConsentCheckbox && !privacyConsentCheckbox.checked) {
+              privacyConsentCheckbox.checked = true;
+              toggleIntakeFields();
+            }
+            autofillForm(participant).then(function() {
+              // Auto-submit after populating fields
+              if (form) {
+                var submitBtn = form.querySelector('.submit-btn');
+                if (submitBtn) {
+                  submitBtn.textContent = 'Registering...';
+                  submitBtn.disabled = true;
+                }
+                form.submit();
+              }
+            });
           } else {
             if (verifyError) {
               verifyError.textContent = 'The mobile number does not match our records. Please try again.';
@@ -1630,6 +1818,10 @@ This will serve as our reference for post-training documentation and processing.
       async function autofillForm(participant) {
         selectedParticipant = participant;
 
+        // Show form sections now that we're auto-filling
+        var formSections = document.getElementById('intakeFormSections');
+        if (formSections) formSections.style.display = '';
+
         // Update search input to show selected name
         searchInput.value = participant.participant_name;
         searchResults.style.display = 'none';
@@ -1710,6 +1902,8 @@ This will serve as our reference for post-training documentation and processing.
       var oldReturning = document.querySelector('input[name="is_returning_participant"][value="Yes"]');
       if (oldReturning && oldReturning.checked) {
         searchArea.style.display = '';
+        var formSections = document.getElementById('intakeFormSections');
+        if (formSections) formSections.style.display = 'none';
       }
     })();
   </script>

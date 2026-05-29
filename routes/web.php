@@ -52,6 +52,8 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
         Route::post('/participant-intakes/events/{event}/toggle', [ParticipantIntakeAdminController::class, 'toggleEvent'])->name('admin.participant-intakes.events.toggle');
         Route::delete('/participant-intakes/events/{event}', [ParticipantIntakeAdminController::class, 'deleteEvent'])->name('admin.participant-intakes.events.delete');
         Route::post('/certificates/endorse', [CertificateAdminController::class, 'endorse'])->name('admin.certs.endorse');
+        Route::get('/certificates/matching-review', [CertificateAdminController::class, 'showMatchingReview'])->name('admin.certs.matching-review');
+        Route::post('/certificates/matching-review/resolve', [CertificateAdminController::class, 'resolveMatching'])->name('admin.certs.matching-resolve');
     });
 
     Route::middleware('role:regional_director')->group(function () {
@@ -85,6 +87,10 @@ Route::get('/verify', [CertificatePublicController::class, 'verify'])
 Route::get('/print', [CertificatePublicController::class, 'print'])
     ->middleware('throttle:30,1')
     ->name('cert.print');
+
+Route::get('/preview', [CertificatePublicController::class, 'preview'])
+    ->middleware('throttle:30,1')
+    ->name('cert.preview');
 
 Route::get('/download', [CertificatePublicController::class, 'download'])
     ->middleware('throttle:30,1')

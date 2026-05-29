@@ -26,7 +26,7 @@ class SendCertificateEmailJob implements ShouldQueue
 
     public function handle(): void
     {
-        $certificate = Certificate::find($this->certificateId);
+        $certificate = Certificate::with('recipient')->find($this->certificateId);
         if (! $certificate) {
             return;
         }

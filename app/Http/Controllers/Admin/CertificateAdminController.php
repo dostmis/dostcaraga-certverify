@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Jobs\SendCertificateEmailJob;
 use App\Models\Certificate;
 use App\Models\CertificateEndorsement;
+use App\Models\Recipient;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\RecipientMatchingService;
 use App\Support\PdfImageNormalizer;
 use App\Support\RegionalDirectorSignatory;
 use Illuminate\Http\UploadedFile;
@@ -580,28 +582,152 @@ class CertificateAdminController extends Controller
 
         [$data, $participants] = $this->validatedCertificatePayload($request);
 
-        $participantsFile = $request->file('participants_file');
-        $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
-        $participantsFilePath = $participantsFile->storeAs(
-            'certificate-endorsements/participants',
-            'participants_' . Str::uuid() . '.' . $participantsExt,
-            'local'
-        );
+        $matchingService = app(RecipientMatchingService::class);
+        $matchResults = [];
+        $unresolvedCount = 0;
 
-        $templatePdfPath = $request->file('certificate_pdf_shared')->storeAs(
-            'certificate-endorsements/templates',
-            'template_' . Str::uuid() . '.pdf',
-            'local'
-        );
+        foreach ($participants as $i => $participant) {
+            $result = $matchingService->match($participant);
+            $matchResults[$i] = $result;
+            if ($result['recipient_id'] === null) {
+                $unresolvedCount++;
+            }
+        }
+
+        if ($unresolvedCount > 0) {
+            $participantsFile = $request->file('participants_file');
+            $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
+            $participantsFilePath = $participantsFile->storeAs(
+                'certificate-endorsements/participants',
+                'participants_' . Str::uuid() . '.' . $participantsExt,
+                'local'
+            );
+
+            $templatePdfPath = $request->file('certificate_pdf_shared')->storeAs(
+                'certificate-endorsements/templates',
+                'template_' . Str::uuid() . '.pdf',
+                'local'
+            );
+
+            $sessionData = $data;
+            unset($sessionData['participants_file'], $sessionData['certificate_pdf_shared']);
+
+            $request->session()->put('pending_match_review', [
+                'participants' => $participants,
+                'results' => $matchResults,
+                'data' => $sessionData,
+                'participants_file_path' => $participantsFilePath,
+                'template_pdf_path' => $templatePdfPath,
+            ]);
+
+            return redirect()->route('admin.certs.matching-review')
+                ->with('warning', $unresolvedCount . ' participant(s) could not be auto-matched. Please review and resolve before endorsing.');
+        }
+
+        return $this->finalizeEndorsement($user, $data, $participants, $request, $matchResults);
+    }
+
+    public function showMatchingReview(Request $request)
+    {
+        $pending = $request->session()->get('pending_match_review');
+        if (! $pending) {
+            return redirect()->route('admin.certs.create')
+                ->with('info', 'No pending matching review. Please create a new certificate package.');
+        }
+
+        $allRecipients = Recipient::orderBy('name')->get(['id', 'name', 'email']);
+
+        return view('admin.certificates.matching-review', [
+            'participants' => $pending['participants'],
+            'results' => $pending['results'],
+            'data' => $pending['data'],
+            'allRecipients' => $allRecipients,
+        ]);
+    }
+
+    public function resolveMatching(Request $request)
+    {
+        $pending = $request->session()->get('pending_match_review');
+        if (! $pending) {
+            return redirect()->route('admin.certs.create')
+                ->with('info', 'Session expired. Please re-upload the participants file.');
+        }
+
+        $resolutions = $request->input('matches', []);
+
+        foreach ($pending['results'] as $i => &$result) {
+            $resolution = $resolutions[$i] ?? 'skip';
+
+            if ($result['recipient_id'] !== null) {
+                continue; // Already matched — don't override
+            }
+
+            if (str_starts_with($resolution, 'accept_')) {
+                $recipientId = (int) substr($resolution, 7);
+                $result['recipient_id'] = $recipientId;
+                $result['confidence'] = 'manual';
+                $result['ambiguous'] = false;
+            } elseif ($resolution === 'create') {
+                $participant = $pending['participants'][$i];
+                $recipient = Recipient::create([
+                    'name' => trim((string) ($participant['name'] ?? 'Unknown')),
+                    'email' => trim((string) ($participant['email'] ?? '')) ?: null,
+                    'contact_number' => trim((string) ($participant['contact_number'] ?? '')) ?: null,
+                    'gender' => trim((string) ($participant['gender'] ?? '')) ?: null,
+                    'password' => null,
+                ]);
+                $result['recipient_id'] = $recipient->id;
+                $result['confidence'] = 'created';
+                $result['ambiguous'] = false;
+            }
+        }
+        unset($result);
+
+        $request->session()->put('pending_match_review', $pending);
+
+        $user = $request->user();
+        $matchResults = $pending['results'];
+        $data = $pending['data'];
+        $participants = $pending['participants'];
+
+        return $this->finalizeEndorsement($user, $data, $participants, $request, $matchResults);
+    }
+
+    private function finalizeEndorsement(User $user, array $data, array $participants, Request $request, array $matchResults)
+    {
+        $pending = $request->session()->pull('pending_match_review');
+
+        if ($pending) {
+            $participantsFilePath = $pending['participants_file_path'];
+            $templatePdfPath = $pending['template_pdf_path'];
+        } else {
+            $participantsFile = $request->file('participants_file');
+            $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
+            $participantsFilePath = $participantsFile->storeAs(
+                'certificate-endorsements/participants',
+                'participants_' . Str::uuid() . '.' . $participantsExt,
+                'local'
+            );
+
+            $templatePdfPath = $request->file('certificate_pdf_shared')->storeAs(
+                'certificate-endorsements/templates',
+                'template_' . Str::uuid() . '.pdf',
+                'local'
+            );
+        }
+
+        $payload = $this->buildTrainingPayload($data);
+        $payload['recipient_matches'] = array_map(fn ($r) => $r['recipient_id'] ?? null, $matchResults);
 
         $endorsement = CertificateEndorsement::create([
             'status' => CertificateEndorsement::STATUS_ENDORSED,
-            'submitted_by' => $user?->id,
+            'submitted_by' => $user->id,
             'participants_count' => count($participants),
             'participants_file_path' => $participantsFilePath,
             'template_pdf_path' => $templatePdfPath,
-            'payload' => $this->buildTrainingPayload($data),
+            'payload' => $payload,
         ]);
+
         $this->notifyRegionalDirectorMessengerOnEndorsement($endorsement, $user);
         $this->notifyRegionalDirectorTelegramOnEndorsement($endorsement, $user);
 
@@ -1234,10 +1360,12 @@ class CertificateAdminController extends Controller
         }
 
         $generatedCertificates = [];
-        foreach ($participants as $participant) {
+        $recipientMatches = (array) ($payload['recipient_matches'] ?? []);
+        foreach ($participants as $i => $participant) {
             $rowData = [
                 'participant_name' => $participant['name'],
                 'email' => $participant['email'] ?? null,
+                'recipient_id' => $recipientMatches[$i] ?? null,
                 'gender' => $participant['gender'] ?? null,
                 'age' => $participant['age'] ?? null,
                 'block_lot_purok' => $participant['block_lot_purok'] ?? null,
@@ -1828,6 +1956,7 @@ class CertificateAdminController extends Controller
                 'certificate_code' => $code,
                 'participant_name' => $data['participant_name'],
                 'email' => $data['email'] ?? null,
+                'recipient_id' => $data['recipient_id'] ?? null,
                 'gender' => $data['gender'] ?? null,
                 'age' => $data['age'] ?? null,
                 'block_lot_purok' => $data['block_lot_purok'] ?? null,

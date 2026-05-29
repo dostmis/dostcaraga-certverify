@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ParticipantIntake;
 use App\Models\ParticipantIntakeEvent;
+use App\Models\Recipient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -24,8 +25,11 @@ class ParticipantIntakeController extends Controller
             abort(404, 'Participant intake link is invalid or inactive.');
         }
 
+        $loggedInRecipient = auth()->guard('recipient')->user();
+
         return view('participant-intake.create', [
             'intakeEvent' => $event,
+            'loggedInRecipient' => $loggedInRecipient,
             'yesNoOptions' => $this->yesNoOptions(),
             'beneficiaryProgramOptions' => $this->beneficiaryProgramOptions(),
             'employedProgramOptions' => $this->employedProgramOptions(),
@@ -175,9 +179,69 @@ class ParticipantIntakeController extends Controller
 
         $data['participant_intake_event_id'] = $event->id;
         $data['owner_user_id'] = $event->user_id;
+
+        $recipientId = null;
+        $loggedInRecipient = auth()->guard('recipient')->user();
+        if ($loggedInRecipient) {
+            $recipientId = $loggedInRecipient->id;
+        } else {
+            $existingRecipient = Recipient::where('email', $data['email'])->first();
+            if ($existingRecipient) {
+                $recipientId = $existingRecipient->id;
+            } else {
+                $recipient = Recipient::create([
+                    'name' => $data['participant_name'],
+                    'email' => $data['email'],
+                    'contact_number' => $data['contact_number'],
+                    'gender' => $data['gender'],
+                    'password' => null,
+                ]);
+                $recipientId = $recipient->id;
+            }
+        }
+        $data['recipient_id'] = $recipientId;
+
+        // Sync intake data to recipient profile
+        if ($recipientId) {
+            $recipient = Recipient::find($recipientId);
+            if ($recipient) {
+                $recipient->fill([
+                    'name' => $data['participant_name'],
+                    'first_name' => $data['first_name'],
+                    'middle_initial' => $data['middle_initial'],
+                    'last_name' => $data['last_name'],
+                    'contact_number' => $data['contact_number'] ?? $recipient->contact_number,
+                    'gender' => $data['gender'] ?? $recipient->gender,
+                    'age_range' => $data['age_range'] ?? $recipient->age_range,
+                    'pwd_status' => $data['pwd_status'] ?? $recipient->pwd_status,
+                    'is_4ps_beneficiary' => $data['is_4ps_beneficiary'] ?? $recipient->is_4ps_beneficiary,
+                    'is_elcac_community' => $data['is_elcac_community'] ?? $recipient->is_elcac_community,
+                    'industry' => $data['industry'] ?? $recipient->industry,
+                    'organization_name' => $data['organization_name'] ?? $recipient->organization_name,
+                    'position_designation' => $data['position_designation'] ?? $recipient->position_designation,
+                    'region' => $data['region'] ?? $recipient->region,
+                    'province' => $data['province'] ?? $recipient->province,
+                    'city_municipality' => $data['city_municipality'] ?? $recipient->city_municipality,
+                    'barangay' => $data['barangay'] ?? $recipient->barangay,
+                    'block_lot_purok' => $data['block_lot_purok'] ?? $recipient->block_lot_purok,
+                    'dost_program_beneficiary' => $data['dost_program_beneficiary'] ?? $recipient->dost_program_beneficiary,
+                    'directly_employed_programs' => $data['directly_employed_programs'] ?? $recipient->directly_employed_programs,
+                    'has_attended_dost_training' => $data['has_attended_dost_training'] ?? $recipient->has_attended_dost_training,
+                    'interested_dost_services' => $data['interested_dost_services'] ?? $recipient->interested_dost_services,
+                    'interested_dost_services_other' => $data['interested_dost_services_other'] ?? $recipient->interested_dost_services_other,
+                ]);
+                $recipient->save();
+            }
+        }
+
         ParticipantIntake::create($data);
 
-        return back()->with('success', 'Submission received. Thank you!');
+        $message = 'Submission received. Thank you!';
+        if (! $loggedInRecipient && ! ($existingRecipient ?? null)) {
+            $message .= ' Check your email to claim your account when you receive a certificate.';
+        }
+
+        return back()->with('success', $message);
     }
 
     private function yesNoOptions(): array

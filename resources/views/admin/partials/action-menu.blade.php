@@ -189,6 +189,10 @@
   >
     <a href="{{ route('admin.certs.index') }}" class="admin-action-menu-item" @click="open = false">Issued Certificates</a>
 
+    @if (! empty($menuRecipient))
+      <a href="{{ route('recipient.certificates') }}" class="admin-action-menu-item" @click="open = false">My Certificates</a>
+    @endif
+
     @if ($menuCanViewAnalytics)
       <a href="{{ route('admin.analytics.index') }}" class="admin-action-menu-item" @click="open = false">Analytics</a>
     @endif

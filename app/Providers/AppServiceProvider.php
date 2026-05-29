@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Models\Recipient;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -32,5 +34,14 @@ class AppServiceProvider extends ServiceProvider
         if (! $isLocalHost && $appUrlScheme === 'https') {
             URL::forceScheme('https');
         }
+
+        View::composer('admin.partials.action-menu', function ($view): void {
+            $user = auth()->user();
+            $menuRecipient = null;
+            if ($user) {
+                $menuRecipient = Recipient::where('user_id', $user->id)->first();
+            }
+            $view->with('menuRecipient', $menuRecipient);
+        });
     }
 }

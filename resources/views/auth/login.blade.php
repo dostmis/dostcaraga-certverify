@@ -90,7 +90,7 @@
                 <x-text-input id="login" class="block mt-1 w-full"
                               type="text" name="login"
                               :value="old('login')" required autofocus
-                              placeholder="your.email@dost.gov.ph" />
+                              placeholder="Enter your email" />
                 <x-input-error :messages="$errors->get('login')" class="mt-2" />
             </div>
 

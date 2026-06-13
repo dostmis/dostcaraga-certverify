@@ -13,6 +13,10 @@ class Certificate extends Model
     public const EMAIL_STATUS_SKIPPED_NO_EMAIL = 'skipped_no_email';
     public const EMAIL_STATUS_SKIPPED_INVALID_EMAIL = 'skipped_invalid_email';
 
+    public const BLOCKCHAIN_STATUS_PENDING = 'pending';
+    public const BLOCKCHAIN_STATUS_ANCHORED = 'anchored';
+    public const BLOCKCHAIN_STATUS_FAILED = 'failed';
+
     protected $fillable = [
         'certificate_code',
         'public_token',
@@ -28,6 +32,8 @@ class Certificate extends Model
         'province',
         'industry',
         'training_title',
+        'caption_text',
+        'caption_alignment',
         'activity_type',
         'certificate_type',
         'recipient_type',
@@ -55,6 +61,14 @@ class Certificate extends Model
         'email_sent_at',
         'email_failed_at',
         'email_failure_message',
+        'blockchain_payload_hash',
+        'blockchain_topic_id',
+        'blockchain_sequence_number',
+        'blockchain_consensus_timestamp',
+        'blockchain_transaction_id',
+        'blockchain_status',
+        'blockchain_error',
+        'blockchain_anchored_at',
     ];
 
     protected $casts = [
@@ -67,6 +81,8 @@ class Certificate extends Model
         'email_last_attempt_at' => 'datetime',
         'email_sent_at' => 'datetime',
         'email_failed_at' => 'datetime',
+        'blockchain_sequence_number' => 'integer',
+        'blockchain_anchored_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -91,5 +107,43 @@ class Certificate extends Model
     public function isValid(): bool
     {
         return $this->status === 'valid';
+    }
+
+    public function isAnchored(): bool
+    {
+        return $this->blockchain_status === self::BLOCKCHAIN_STATUS_ANCHORED
+            && !empty($this->blockchain_sequence_number);
+    }
+
+    /**
+     * Canonical, deterministic representation of the immutable certificate
+     * facts. This is what we hash and anchor to Hedera. It deliberately
+     * excludes the PDF bytes and any mutable presentation fields so the hash
+     * never drifts when a stamped PDF is regenerated (e.g. QR domain refresh).
+     */
+    public function canonicalPayload(): array
+    {
+        return [
+            'certificate_code' => (string) $this->certificate_code,
+            'public_token' => (string) $this->public_token,
+            'participant_name' => (string) $this->participant_name,
+            'training_title' => (string) $this->training_title,
+            'training_date' => optional($this->training_date)->format('Y-m-d'),
+            'training_date_to' => optional($this->training_date_to)->format('Y-m-d'),
+            'issuing_office' => (string) $this->issuing_office,
+        ];
+    }
+
+    /**
+     * SHA-256 of the canonical payload, encoded deterministically.
+     */
+    public function canonicalHash(): string
+    {
+        $json = json_encode(
+            $this->canonicalPayload(),
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
+
+        return hash('sha256', (string) $json);
     }
 }

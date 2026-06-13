@@ -36,6 +36,8 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
         Route::get('/certificates', [CertificateAdminController::class, 'index'])->name('admin.certs.index');
         Route::get('/certificates/approvals', [CertificateAdminController::class, 'approvals'])->name('admin.certs.approvals');
         Route::get('/certificates/create', [CertificateAdminController::class, 'create'])->name('admin.certs.create');
+        Route::post('/certificates/caption-suggest', [CertificateAdminController::class, 'suggestCaption'])->name('admin.certs.caption-suggest');
+        Route::post('/certificates/live-preview', [CertificateAdminController::class, 'livePreview'])->name('admin.certs.live-preview');
         Route::post('/certificates/preview', [CertificateAdminController::class, 'preview'])->name('admin.certs.preview');
     });
 

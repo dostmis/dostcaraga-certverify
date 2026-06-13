@@ -830,6 +830,7 @@ This will serve as our reference for post-training documentation and processing.
               <div>
                 <label class="field-label">Contact Number</label>
                 <input type="tel" name="contact_number" value="{{ old('contact_number', $loggedInRecipient->contact_number ?? '') }}" required class="field-input" placeholder="e.g., 09171234567">
+                <p class="field-hint">This will be used for verification and OTPs. Make sure it is correct.</p>
               </div>
             </div>
           </section>
@@ -1662,7 +1663,7 @@ This will serve as our reference for post-training documentation and processing.
             });
           } else {
             if (verifyError) {
-              verifyError.textContent = 'The mobile number does not match our records. Please try again.';
+              verifyError.innerHTML = '<ul style="list-style-type: disc; padding-left: 1.5rem; text-align: left; margin: 0;"><li>The mobile number does not match our records. Please try again.</li><li>If you forgot your registered number or entered an invalid one, please contact the MIS Team at mis@caraga.dost.gov.ph.</li></ul>';
               verifyError.style.display = '';
             }
             if (verifyInput) verifyInput.value = '';
@@ -1786,30 +1787,54 @@ This will serve as our reference for post-training documentation and processing.
 
         if (!regionSel || !provinceSel || !citySel || !brgySel) return;
 
+        // Case-insensitive option lookup — stored DB values may differ in
+        // capitalisation from what the PSGC API currently returns (e.g.
+        // "REGION XIII (Caraga)" vs "Region XIII (Caraga)").
+        function findOption(sel, target) {
+          if (!target) return null;
+          var lower = target.toLowerCase();
+          for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value.toLowerCase() === lower) {
+              return sel.options[i].value;
+            }
+          }
+          return null;
+        }
+
         // Set region
-        if (participant.region && regionSel.value !== participant.region) {
-          regionSel.value = participant.region;
-          regionSel.dispatchEvent(new Event('change', { bubbles: true }));
-          await waitForSelectReady(provinceSel);
+        if (participant.region) {
+          var regionMatch = findOption(regionSel, participant.region);
+          if (regionMatch && regionSel.value !== regionMatch) {
+            regionSel.value = regionMatch;
+            regionSel.dispatchEvent(new Event('change', { bubbles: true }));
+            await waitForSelectReady(provinceSel);
+          }
         }
 
         // Set province
-        if (participant.province && provinceSel.value !== participant.province && !provinceSel.disabled) {
-          provinceSel.value = participant.province;
-          provinceSel.dispatchEvent(new Event('change', { bubbles: true }));
-          await waitForSelectReady(citySel);
+        if (participant.province && !provinceSel.disabled) {
+          var provinceMatch = findOption(provinceSel, participant.province);
+          if (provinceMatch && provinceSel.value !== provinceMatch) {
+            provinceSel.value = provinceMatch;
+            provinceSel.dispatchEvent(new Event('change', { bubbles: true }));
+            await waitForSelectReady(citySel);
+          }
         }
 
         // Set city
-        if (participant.city_municipality && citySel.value !== participant.city_municipality && !citySel.disabled) {
-          citySel.value = participant.city_municipality;
-          citySel.dispatchEvent(new Event('change', { bubbles: true }));
-          await waitForSelectReady(brgySel);
+        if (participant.city_municipality && !citySel.disabled) {
+          var cityMatch = findOption(citySel, participant.city_municipality);
+          if (cityMatch && citySel.value !== cityMatch) {
+            citySel.value = cityMatch;
+            citySel.dispatchEvent(new Event('change', { bubbles: true }));
+            await waitForSelectReady(brgySel);
+          }
         }
 
         // Set barangay
         if (participant.barangay && !brgySel.disabled) {
-          brgySel.value = participant.barangay;
+          var brgyMatch = findOption(brgySel, participant.barangay);
+          if (brgyMatch) brgySel.value = brgyMatch;
         }
       }
 

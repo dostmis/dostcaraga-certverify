@@ -265,6 +265,42 @@
     .revoked .statusBanner{ background: var(--revoked-bg); color:#5a2c00; }
     .revoked .statusIcon{ background: rgba(180,83,9,.18); color: var(--revoked); }
 
+    .chainPanel{
+      margin: 12px 14px 0;
+      border:1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display:flex;
+      gap:12px;
+      align-items:flex-start;
+    }
+    .chainPanel .chainIcon{
+      width:34px; height:34px; flex:0 0 34px;
+      border-radius:9px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:18px;
+    }
+    .chainPanel .chainBody{ min-width:0; }
+    .chainPanel .chainTitle{ font-size:13px; font-weight:900; letter-spacing:.02em; }
+    .chainPanel .chainMsg{ font-size:12px; color:var(--muted); margin-top:2px; }
+    .chainPanel .chainMeta{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:11px; color:var(--muted); margin-top:6px; word-break:break-all;
+    }
+    .chainPanel .chainLink{ display:inline-block; margin-top:8px; font-size:12px; font-weight:800; color:var(--brand); text-decoration:none; }
+    .chainPanel .chainLink:hover{ text-decoration:underline; }
+
+    .chain-verified{ background: var(--valid-bg); border-color: rgba(22,163,74,.35); }
+    .chain-verified .chainIcon{ background: rgba(22,163,74,.18); color: var(--valid); }
+    .chain-verified .chainTitle{ color:#0b3d1b; }
+
+    .chain-unavailable{ background:#f8fafc; }
+    .chain-unavailable .chainIcon{ background: rgba(100,116,139,.15); color: var(--muted); }
+
+    .chain-mismatch{ background: var(--invalid-bg); border-color: rgba(220,38,38,.35); }
+    .chain-mismatch .chainIcon{ background: rgba(220,38,38,.16); color: var(--invalid); }
+    .chain-mismatch .chainTitle{ color:#5f0b0b; }
+
     /* Print-friendly */
     @media print{
       body{ background:#fff; padding:0; }
@@ -336,6 +372,36 @@
               </div>
             </div>
           </div>
+
+          @if(!empty($blockchain))
+            @php
+              $chainState = $blockchain['state'] ?? 'not_anchored';
+              $chainMap = [
+                'verified'    => ['cls' => 'chain-verified',    'icon' => '⛓', 'title' => 'BLOCKCHAIN VERIFIED'],
+                'unavailable' => ['cls' => 'chain-unavailable', 'icon' => '⛓', 'title' => 'BLOCKCHAIN ANCHORED'],
+                'mismatch'    => ['cls' => 'chain-mismatch',    'icon' => '⚠', 'title' => 'BLOCKCHAIN MISMATCH'],
+              ];
+              $chain = $chainMap[$chainState] ?? null;
+            @endphp
+            @if($chain)
+              <div class="chainPanel {{ $chain['cls'] }}">
+                <div class="chainIcon">{{ $chain['icon'] }}</div>
+                <div class="chainBody">
+                  <div class="chainTitle">{{ $chain['title'] }}</div>
+                  <div class="chainMsg">{{ $blockchain['message'] }}</div>
+                  @if(!empty($blockchain['consensus_timestamp']))
+                    <div class="chainMeta">
+                      Consensus time: {{ $blockchain['consensus_timestamp'] }}<br>
+                      Topic: {{ $cert->blockchain_topic_id }} · Seq #{{ $cert->blockchain_sequence_number }}
+                    </div>
+                  @endif
+                  @if(!empty($blockchainExplorerUrl))
+                    <a class="chainLink" href="{{ $blockchainExplorerUrl }}" target="_blank" rel="noopener">View on HashScan ↗</a>
+                  @endif
+                </div>
+              </div>
+            @endif
+          @endif
 
           <div class="rows">
             <div class="row">

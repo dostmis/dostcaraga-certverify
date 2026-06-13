@@ -84,6 +84,11 @@ class PsgcController extends Controller
                             $barangays[] = $brgyName;
                         }
                     }
+                    // Handle flat/leaf entries (e.g., NCR where barangays are
+                    // directly under cities with only {population: N} structure).
+                    if (count($barangays) === 0 && isset($cityData['population'])) {
+                        $barangays[] = $cityName;
+                    }
                     if (count($barangays) > 0) {
                         $cities[strtolower($cityName)] = [
                             'name' => $cityName,
@@ -98,6 +103,50 @@ class PsgcController extends Controller
             }
         }
 
+        return $result;
+    }
+
+    /**
+     * Fallback: get provinces for a region from the static PSGC JSON.
+     * Used when the Rootscratch API returns no provinces (e.g., NCR).
+     */
+    private function getProvincesFromStaticByRegion(string $regionName): array
+    {
+        $path = resource_path('data/psgc.json');
+        if (!file_exists($path)) {
+            return [];
+        }
+
+        $raw = json_decode(file_get_contents($path), true);
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        // Case-insensitive region lookup
+        $regionKey = null;
+        foreach ($raw as $key => $data) {
+            if (strcasecmp($key, $regionName) === 0) {
+                $regionKey = $key;
+                break;
+            }
+        }
+
+        if ($regionKey === null || !isset($raw[$regionKey]) || !is_array($raw[$regionKey])) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($raw[$regionKey] as $provName => $provData) {
+            if ($provName === 'population' || !is_array($provData)) {
+                continue;
+            }
+            $result[] = [
+                'name' => $provName,
+                'psgc_code' => '',
+            ];
+        }
+
+        usort($result, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
         return $result;
     }
 
@@ -132,7 +181,7 @@ class PsgcController extends Controller
 
         $cacheKey = 'psgc_provinces_' . $regPrefix;
 
-        $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($regPrefix) {
+        $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($regPrefix, $regCode) {
             $raw = $this->fetchFromApi('/province');
             $result = [];
             foreach ($raw as $item) {
@@ -147,6 +196,38 @@ class PsgcController extends Controller
                     'psgc_code' => $item['psgc_id'],
                 ];
             }
+
+            // Fallback: if the API returned no provinces (e.g., NCR has no
+            // traditional provinces — its cities are directly under the region),
+            // extract province-level entries from the static PSGC JSON.
+            if (count($result) === 0) {
+                // Look up the region name from the regions list
+                $regionName = null;
+                $regions = Cache::get('psgc_regions');
+                if (!$regions) {
+                    // Regions cache not yet populated; fetch fresh
+                    $regionsRaw = $this->fetchFromApi('/region');
+                    $regions = [];
+                    foreach ($regionsRaw as $item) {
+                        if (!empty($item['name'])) {
+                            $regions[] = [
+                                'name' => $item['name'],
+                                'psgc_code' => $item['psgc_id'] ?? '',
+                            ];
+                        }
+                    }
+                }
+                foreach ($regions as $region) {
+                    if (($region['psgc_code'] ?? '') === $regCode) {
+                        $regionName = $region['name'];
+                        break;
+                    }
+                }
+                if ($regionName) {
+                    $result = $this->getProvincesFromStaticByRegion($regionName);
+                }
+            }
+
             usort($result, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
             return $result;
         });

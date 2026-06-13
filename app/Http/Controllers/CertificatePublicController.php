@@ -3,13 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Certificate;
+use App\Services\HederaService;
 use App\Support\RegionalDirectorSignatory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class CertificatePublicController extends Controller
 {
-    public function verify(Request $request)
+    public function verify(Request $request, HederaService $hedera)
     {
         $t = $request->query('t');
 
@@ -17,23 +18,32 @@ class CertificatePublicController extends Controller
         $found = false;
         $code = null;
         $reason = null;
+        $blockchain = null;
+        $blockchainExplorerUrl = null;
 
         if (!$t) {
             $reason = 'Missing token.';
-            return view('verify.show', compact('cert','found','code','reason'));
+            return view('verify.show', compact('cert','found','code','reason','blockchain','blockchainExplorerUrl'));
         }
 
         $cert = Certificate::where('public_token', $t)->first();
 
         if (!$cert) {
             $reason = 'Token not found.';
-            return view('verify.show', compact('cert','found','code','reason'));
+            return view('verify.show', compact('cert','found','code','reason','blockchain','blockchainExplorerUrl'));
         }
 
         $found = true;
         $code = $cert->certificate_code;
 
-        return view('verify.show', compact('cert','found','code','reason'));
+        // Only surface the blockchain panel when the feature is on and the
+        // certificate is valid. Verification is read-only and never throws.
+        if ($hedera->enabled() && $cert->isValid() && $cert->isAnchored()) {
+            $blockchain = $hedera->verifyCertificate($cert);
+            $blockchainExplorerUrl = $hedera->explorerTopicUrl($cert->blockchain_topic_id);
+        }
+
+        return view('verify.show', compact('cert','found','code','reason','blockchain','blockchainExplorerUrl'));
     }
 
     public function print(Request $request)

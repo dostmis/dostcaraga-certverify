@@ -42,3 +42,10 @@ certUI/
 
 # Docker Development Environment
 .env.docker.dev.local
+
+# Database backups (contain real data)
+/backup/
+/dbbackupserver/
+
+# Security review (contains vulnerability details)
+SECURITY_REVIEW_2026-06-10.md

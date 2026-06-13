@@ -50,6 +50,27 @@ return [
         'version' => env('PSGC_API_VERSION', 'Q2_2024'),
     ],
 
+    'ollama' => [
+        'enabled' => env('OLLAMA_ENABLED', true),
+        'base_url' => env('OLLAMA_BASE_URL', 'http://localhost:11434'),
+        'model' => env('OLLAMA_CAPTION_MODEL', 'qwen2.5:3b'),
+        'timeout' => (int) env('OLLAMA_TIMEOUT', 30),
+    ],
+
+    // Hedera Consensus Service anchoring. The operator account id / private key
+    // live ONLY in the Node bridge's own env (hedera/.env), never here. Laravel
+    // only knows how to reach the bridge and the public read endpoints.
+    'hedera' => [
+        'enabled' => env('HEDERA_ENABLED', false),
+        'bridge_url' => env('HEDERA_BRIDGE_URL', 'http://localhost:3001'),
+        'bridge_timeout' => (int) env('HEDERA_BRIDGE_TIMEOUT', 20),
+        'topic_id' => env('HEDERA_TOPIC_ID'),
+        'network' => env('HEDERA_NETWORK', 'testnet'),
+        'mirror_url' => env('HEDERA_MIRROR_URL', 'https://testnet.mirrornode.hedera.com'),
+        'mirror_timeout' => (int) env('HEDERA_MIRROR_TIMEOUT', 8),
+        'explorer_url' => env('HEDERA_EXPLORER_URL', 'https://hashscan.io/testnet'),
+    ],
+
     'telegram_bot' => [
         'enabled' => env('TG_BOT_ENABLED', false),
         'notify_on_every_endorsement' => env('TG_NOTIFY_ON_EVERY_ENDORSE', true),

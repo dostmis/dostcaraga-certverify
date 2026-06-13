@@ -224,14 +224,47 @@ ExecStart=${PHP_BIN} ${PROJECT_DIR}/artisan schedule:work
 WantedBy=multi-user.target
 EOF
 
+# Optional Hedera bridge: only installed when hedera/.env is present so setups
+# that do not use blockchain anchoring are unaffected.
+HEDERA_SERVICE=""
+if [[ -f "${PROJECT_DIR}/hedera/.env" ]]; then
+    NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+    if [[ -z "${NODE_BIN}" ]]; then
+        echo "WARNING: hedera/.env found but 'node' is not installed; skipping hedera-bridge service." >&2
+    else
+        if [[ ! -d "${PROJECT_DIR}/hedera/node_modules" ]]; then
+            echo "Installing hedera bridge dependencies..."
+            (cd "${PROJECT_DIR}/hedera" && sudo -u www-data "$(command -v npm)" install --omit=dev) || true
+        fi
+        cat > /etc/systemd/system/hedera-bridge.service <<EOF
+[Unit]
+Description=CERTiFY Hedera Consensus Service Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=${PROJECT_DIR}/hedera
+ExecStart=${NODE_BIN} ${PROJECT_DIR}/hedera/server.js
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        HEDERA_SERVICE="hedera-bridge"
+    fi
+fi
+
 if [[ "${RUN_OPTIMIZE}" == "true" ]]; then
     sudo -u www-data "${PHP_BIN}" "${PROJECT_DIR}/artisan" optimize || true
 fi
 
 nginx -t
 systemctl daemon-reload
-systemctl enable --now "${PHP_FPM_SERVICE}" nginx certverify-queue certverify-scheduler
-systemctl restart "${PHP_FPM_SERVICE}" nginx certverify-queue certverify-scheduler
+systemctl enable --now "${PHP_FPM_SERVICE}" nginx certverify-queue certverify-scheduler ${HEDERA_SERVICE}
+systemctl restart "${PHP_FPM_SERVICE}" nginx certverify-queue certverify-scheduler ${HEDERA_SERVICE}
 
 echo
 echo "Services are installed and enabled on boot:"
@@ -239,6 +272,9 @@ echo "  - nginx"
 echo "  - ${PHP_FPM_SERVICE}"
 echo "  - certverify-queue"
 echo "  - certverify-scheduler"
+if [[ -n "${HEDERA_SERVICE}" ]]; then
+    echo "  - hedera-bridge"
+fi
 echo
 echo "Check status with:"
-echo "  systemctl status nginx ${PHP_FPM_SERVICE} certverify-queue certverify-scheduler --no-pager"
+echo "  systemctl status nginx ${PHP_FPM_SERVICE} certverify-queue certverify-scheduler ${HEDERA_SERVICE} --no-pager"

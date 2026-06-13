@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\AnchorCertificateOnHederaJob;
 use App\Jobs\SendCertificateEmailJob;
 use App\Models\Certificate;
 use App\Models\CertificateEndorsement;
@@ -246,6 +247,7 @@ class CertificateAdminController extends Controller
         $topics = $this->topics();
         $activityTypes = $this->activityTypes();
         $certificateTypes = $this->certificateTypes();
+        $certificateTemplateFiles = $this->defaultTemplateFileByCertificateType();
         $automaticCertificateTypeByRecipientType = $this->automaticCertificateTypeByRecipientType();
         $recipientTypes = $this->recipientTypes();
         $dostPrograms = $this->dostPrograms();
@@ -266,6 +268,7 @@ class CertificateAdminController extends Controller
             'topics',
             'activityTypes',
             'certificateTypes',
+            'certificateTemplateFiles',
             'automaticCertificateTypeByRecipientType',
             'recipientTypes',
             'dostPrograms',
@@ -317,6 +320,49 @@ class CertificateAdminController extends Controller
             'Certificate of Commendation',
             'Certificate of Completion',
         ];
+    }
+
+    private function defaultTemplateFileByCertificateType(): array
+    {
+        return [
+            'Certificate of Appreciation' => 'Appreciation.pdf',
+            'Certificate of Participation' => 'Participation.pdf',
+            'Certificate of Recognition' => 'Recognition.pdf',
+            'Certificate of Commendation' => 'Commendation.pdf',
+            'Certificate of Completion' => 'Completion.pdf',
+        ];
+    }
+
+    private function defaultTemplatePathForCertificateType(string $certificateType): string
+    {
+        $defaultFileName = $this->defaultTemplateFileByCertificateType()[$certificateType] ?? null;
+        if ($defaultFileName === null) {
+            throw new \RuntimeException('No embedded template is configured for the selected certificate type.');
+        }
+
+        $absolutePath = public_path('templates/' . $defaultFileName);
+        if (!is_file($absolutePath)) {
+            throw new \RuntimeException("Default template file not found: {$defaultFileName}. Please ensure it exists in public/templates/ or upload a custom template.");
+        }
+
+        return $absolutePath;
+    }
+
+    private function storeTemplatePdfForRequest(array $data, Request $request, string $directory): string
+    {
+        if (($data['template_source'] ?? null) === 'custom' && $request->hasFile('certificate_pdf_shared')) {
+            return $request->file('certificate_pdf_shared')->storeAs(
+                $directory,
+                'template_' . Str::uuid() . '.pdf',
+                'local'
+            );
+        }
+
+        $sourceAbs = $this->defaultTemplatePathForCertificateType((string) ($data['certificate_type'] ?? ''));
+        $localPath = trim($directory, '/') . '/template_' . Str::uuid() . '.pdf';
+        Storage::disk('local')->put($localPath, file_get_contents($sourceAbs));
+
+        return $localPath;
     }
 
     private function automaticCertificateTypeByRecipientType(): array
@@ -547,11 +593,8 @@ class CertificateAdminController extends Controller
         $this->ensureRegionalDirectorAction($request->user());
 
         [$data, $participants] = $this->validatedCertificatePayload($request);
-        $sharedPath = $request->file('certificate_pdf_shared')->storeAs(
-            'certificates/source',
-            'shared_' . Str::uuid() . '.pdf',
-            'local'
-        );
+
+        $sharedPath = $this->storeTemplatePdfForRequest($data, $request, 'certificates/source');
 
         try {
             $generatedCertificates = $this->generateCertificatesFromPayload(
@@ -603,11 +646,7 @@ class CertificateAdminController extends Controller
                 'local'
             );
 
-            $templatePdfPath = $request->file('certificate_pdf_shared')->storeAs(
-                'certificate-endorsements/templates',
-                'template_' . Str::uuid() . '.pdf',
-                'local'
-            );
+            $templatePdfPath = $this->storeTemplatePdfForRequest($data, $request, 'certificate-endorsements/templates');
 
             $sessionData = $data;
             unset($sessionData['participants_file'], $sessionData['certificate_pdf_shared']);
@@ -709,11 +748,7 @@ class CertificateAdminController extends Controller
                 'local'
             );
 
-            $templatePdfPath = $request->file('certificate_pdf_shared')->storeAs(
-                'certificate-endorsements/templates',
-                'template_' . Str::uuid() . '.pdf',
-                'local'
-            );
+            $templatePdfPath = $this->storeTemplatePdfForRequest($data, $request, 'certificate-endorsements/templates');
         }
 
         $payload = $this->buildTrainingPayload($data);
@@ -1152,6 +1187,334 @@ class CertificateAdminController extends Controller
         return $saved && is_file($destinationAbs);
     }
 
+    /**
+     * Generate a polished, gender-neutral certificate caption with a local
+     * Ollama model. The caption appears beneath the recipient's printed name,
+     * so it never includes the name and always uses "his/her" phrasing so a
+     * single caption fits any recipient. Falls back to a deterministic,
+     * template-built caption when Ollama is unreachable or disabled.
+     */
+    public function suggestCaption(Request $request)
+    {
+        if (!$this->canPrepareCertificate($request->user())) {
+            abort(403, 'You are not allowed to draft certificate captions.');
+        }
+
+        $context = [
+            'certificate_type' => $this->cleanCaptionField($request->input('certificate_type')),
+            'recipient_type' => $this->cleanCaptionField($request->input('recipient_type')),
+            'activity_type' => $this->cleanCaptionField($request->input('activity_type')),
+            'title' => $this->cleanCaptionField($request->input('training_title')),
+            'topic' => $this->cleanCaptionField($request->input('topic')),
+            'venue' => $this->cleanCaptionField($request->input('venue')),
+            'date_range' => $this->humanizeCaptionDateRange(
+                $request->input('training_date_from'),
+                $request->input('training_date_to')
+            ),
+            'given_clause' => $this->formatGivenClause($request->input('training_date_to')),
+            'hours' => $this->cleanCaptionField($request->input('number_of_training_hours')),
+            'tone' => $this->cleanCaptionField($request->input('tone')) ?: 'warm and dignified',
+            // Background/purpose of the training typed in the AI panel.
+            'context' => trim(mb_substr((string) $request->input('context', ''), 0, 500)),
+            // Free-text instructions the issuer optionally types in the panel.
+            'instructions' => trim(mb_substr((string) $request->input('instructions', ''), 0, 500)),
+        ];
+
+        $caption = $this->generateCaptionWithOllama($context);
+        $source = 'ai';
+
+        if ($caption === null) {
+            $caption = $this->buildFallbackCaption($context);
+            $source = 'fallback';
+        }
+
+        return response()->json([
+            'caption' => $caption,
+            'source' => $source,
+        ]);
+    }
+
+    private function cleanCaptionField($value): string
+    {
+        $value = is_string($value) ? trim($value) : '';
+
+        // Drop placeholder sentinels the form uses for unfilled "Others" rows.
+        if ($value === '' || strcasecmp($value, 'Others') === 0 || strcasecmp($value, self::NOT_APPLICABLE) === 0) {
+            return '';
+        }
+
+        return $value;
+    }
+
+    private function humanizeCaptionDateRange($from, $to): string
+    {
+        $from = is_string($from) ? trim($from) : '';
+        $to = is_string($to) ? trim($to) : '';
+
+        try {
+            $start = $from !== '' ? \Carbon\Carbon::parse($from) : null;
+            $end = $to !== '' ? \Carbon\Carbon::parse($to) : null;
+        } catch (\Throwable $e) {
+            return '';
+        }
+
+        if (!$start && !$end) {
+            return '';
+        }
+
+        if ($start && $end && !$start->isSameDay($end)) {
+            if ($start->isSameMonth($end) && $start->isSameYear($end)) {
+                return $start->format('F j') . ' to ' . $end->format('j, Y');
+            }
+
+            return $start->format('F j, Y') . ' to ' . $end->format('F j, Y');
+        }
+
+        return ($start ?? $end)->format('F j, Y');
+    }
+
+    /**
+     * Build the "Given this 26th day of May 2026" clause used to close the
+     * citation. Uses the activity's end date, falling back to today.
+     */
+    private function formatGivenClause($dateTo): string
+    {
+        $dateTo = is_string($dateTo) ? trim($dateTo) : '';
+
+        try {
+            $date = $dateTo !== '' ? \Carbon\Carbon::parse($dateTo) : \Carbon\Carbon::now();
+        } catch (\Throwable $e) {
+            $date = \Carbon\Carbon::now();
+        }
+
+        return $date->format('jS') . ' day of ' . $date->format('F Y');
+    }
+
+    private function generateCaptionWithOllama(array $context): ?string
+    {
+        if (!config('services.ollama.enabled', true)) {
+            return null;
+        }
+
+        $baseUrl = rtrim((string) config('services.ollama.base_url', 'http://localhost:11434'), '/');
+        $model = (string) config('services.ollama.model', 'qwen2.5:3b');
+        $timeout = (int) config('services.ollama.timeout', 30);
+
+        $givenClause = $context['given_clause'] ?: $this->formatGivenClause(null);
+        $venue = $context['venue'] ?: 'DOST Caraga, Ampayon, Butuan City';
+
+        $details = collect([
+            'Certificate Type' => $context['certificate_type'] ?: 'Certificate of Participation',
+            'Recipient Role' => $context['recipient_type'] ?: 'Participant',
+            'Activity Type' => $context['activity_type'],
+            'Title' => $context['title'],
+            'Topic' => $context['topic'],
+            'Dates held' => $context['date_range'],
+            'Venue' => $context['venue'],
+            'Training Hours' => $context['hours'],
+        ])->filter(fn ($v) => $v !== '' && $v !== null)
+          ->map(fn ($v, $k) => "- {$k}: {$v}")
+          ->implode("\n");
+
+        $system = <<<'SYS'
+ROLE
+You generate the body text printed on official Certificates issued by the Department of Science and Technology (DOST). The recipient's name and the certificate's pre-printed preamble appear ABOVE your text; your output continues that preamble.
+
+INPUT
+You will be given some or all of: TITLE (event name), ROLE (e.g., Participant, Resource Speaker, Facilitator, Trainer, Lecturer, Evaluator), DATES, VENUE, CONTEXT CLAUSE, and the issuance date for the GIVEN clause. Use ONLY what is provided.
+
+OUTPUT — ABSOLUTE RULES
+1. Output EXACTLY two sentences, each ending in a single period. No labels, headings, line numbers, numbering, markdown, asterisks, bullets, surrounding quotation marks, or any preamble/commentary. Output the two sentences and nothing else.
+2. NEVER write the recipient's name (it is printed above). Write in the third person and keep it gender-neutral: use "his/her" only. NEVER use he, she, they, them, you, your, Mr., Ms., or the person's name.
+3. Sentence 1 begins with a LOWERCASE letter (it continues the pre-printed preamble). Sentence 2 begins with the capitalized word "Given".
+4. Wrap TITLE in straight double quotation marks ("..."), reproduce it EXACTLY as provided, and do NOT shorten, paraphrase, or add an ellipsis. (Any "..." in the examples below only marks where a long title was trimmed for this prompt — never output an ellipsis.)
+5. Use the correct article: "a" before a consonant sound, "an" before a vowel sound (e.g., "as an Evaluator", "as a Resource Speaker").
+6. Do NOT invent facts, hours, dates, roles, or places. If a needed detail is missing, omit the clause that requires it (see FALLBACKS) — never guess.
+
+DATE FORMAT
+- In Sentence 1, use long form: "April 23, 2026"; a range as "April 23-24, 2026" or "April 23 to May 2, 2026".
+- In the GIVEN clause (Sentence 2), use an ordinal: "Given this 23rd day of April 2026 at <VENUE>." Use the single issuance date provided (usually the last day of the event); never a range here.
+
+CHOOSE THE FORMAT
+- PARTICIPATION format: when ROLE is Participant/attendee, or no role is given.
+- RECOGNITION format: for any contributor role (Resource Speaker, Facilitator, Trainer, Lecturer, Evaluator, Coordinator, Judge, etc.).
+
+PARTICIPATION FORMAT
+Sentence 1 — choose based on what is provided:
+- Date and venue known: for actively participating during the "<TITLE>" held on <DATES> at <VENUE>.
+- Context clause provided (with or without date/venue): for actively participating in the "<TITLE>" <CONTEXT CLAUSE>.
+Sentence 2 (always): Given this <GIVEN CLAUSE> at <VENUE>.
+
+RECOGNITION FORMAT
+Sentence 1: for imparting his/her knowledge and expertise as <a/an> <ROLE> during the conduct of the "<TITLE>" held on <DATES> at <VENUE>.
+Sentence 2 (always): Given this <GIVEN CLAUSE> at <VENUE>.
+
+FALLBACKS (only when a detail is missing)
+- No venue in Sentence 1: drop " at <VENUE>" and end after the date.
+- No dates: use the context-clause variant, or drop "held on <DATES>".
+- The GIVEN clause requires a place; if none is separately provided, reuse the event VENUE.
+
+SELF-CHECK before output: exactly two sentences; no name / he / she / they / you; TITLE in double quotes and verbatim; Sentence 1 starts lowercase; Sentence 2 starts with "Given"; plain text only.
+
+EXAMPLES
+Participation (date and venue): for actively participating during the "Digital Transformation for MSMEs" held on April 23, 2026 at Watergate Pavilion, Butuan City. Given this 23rd day of April 2026 at Watergate Pavilion, Butuan City.
+Participation (context clause): for actively participating in the "Workshop on Vibe Coding" contributing to the continuing efforts in strengthening digital transformation in the region. Given this 26th day of May 2026 at DOST Caraga - AMCEN, Ampayon, Butuan City.
+Recognition (Resource Speaker): for imparting his/her knowledge and expertise as a Resource Speaker during the conduct of the "Training on Selection and Chemical Analysis of Metals" held on June 3, 2026 at Butuan City, Agusan del Norte. Given this 3rd day of June 2026 at Butuan City, Agusan del Norte.
+SYS;
+
+        $certType = $context['certificate_type'] ?: 'participation';
+        $prompt = "Write the citation for the certification of {$certType}"
+            . " with the event " . ($context['title'] ?: 'the training')
+            . " conducted on " . ($context['date_range'] ?: 'the scheduled date')
+            . " and conducted at {$venue}.";
+
+        if (!empty($context['context'])) {
+            $prompt .= " This is the context: " . $context['context'];
+        }
+
+        $prompt .= "\n\nAdditional details:\n" . $details
+            . "\n\nThe FINAL sentence must read exactly: Given this {$givenClause} at {$venue}.";
+
+        if (!empty($context['instructions'])) {
+            $prompt .= "\n\nAdditional instructions from the issuer (follow them, but keep all the rules above): "
+                . $context['instructions'];
+        }
+
+        try {
+            $response = Http::timeout($timeout)
+                ->acceptJson()
+                ->post($baseUrl . '/api/generate', [
+                    'model' => $model,
+                    'system' => $system,
+                    'prompt' => $prompt,
+                    'stream' => false,
+                    'options' => [
+                        'temperature' => 0.65,
+                        'top_p' => 0.9,
+                        'num_predict' => 380,
+                        'repeat_penalty' => 1.15,
+                    ],
+                ]);
+
+            if (!$response->successful()) {
+                Log::warning('Ollama caption request failed', ['status' => $response->status()]);
+                return null;
+            }
+
+            $caption = $this->normalizeGeneratedCaption((string) $response->json('response', ''));
+
+            return $caption !== '' ? $caption : null;
+        } catch (\Throwable $e) {
+            Log::warning('Ollama caption request errored', ['message' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    private function normalizeGeneratedCaption(string $caption): string
+    {
+        $caption = trim($caption);
+
+        // Strip code fences, surrounding quotes, and any leftover markdown
+        // emphasis the model may emit despite instructions.
+        $caption = preg_replace('/```[a-z]*\s*|\s*```/i', '', $caption);
+        $caption = preg_replace('/[*_#`>]+/', '', $caption);
+        $caption = trim($caption, " \t\n\r\"'");
+
+        // Collapse stray whitespace/newlines into clean single-spaced prose.
+        $caption = preg_replace('/\s*\n\s*/', ' ', $caption);
+        $caption = preg_replace('/[ \t]{2,}/', ' ', $caption);
+
+        // Insert a double line-break before the closing "Given this…" sentence.
+        $caption = preg_replace('/\s+(?=Given this\b)/i', '<br><br>', $caption);
+
+        return trim($caption);
+    }
+
+    private function buildFallbackCaption(array $context): string
+    {
+        $role = $context['recipient_type'] ?: 'Participant';
+        $venue = $context['venue'] ?: 'DOST Caraga, Ampayon, Butuan City';
+        $givenClause = $context['given_clause'] ?: $this->formatGivenClause(null);
+        $isParticipant = stripos($role, 'participant') !== false
+            || stripos($context['certificate_type'] ?? '', 'participation') !== false;
+
+        $activity = trim(($context['activity_type'] ? $context['activity_type'] . ' ' : '') . $context['title']);
+
+        if ($isParticipant) {
+            // Participation format — 2 sentences, lowercase opening.
+            $title = $context['title'] !== '' ? '"' . $context['title'] . '"' : '"the activity"';
+            $s1 = "for actively participating during the {$title}"
+                . ($context['date_range'] !== '' ? ' held on ' . $context['date_range'] : '')
+                . ($context['venue'] !== '' ? ', held at ' . $context['venue'] : '') . '.';
+            $s2 = "Given this {$givenClause} at {$venue}.";
+            return $s1 . '<br><br>' . $s2;
+        }
+
+        // Recognition format — 2 sentences, lowercase opening.
+        $title = $context['title'] !== '' ? '"' . $context['title'] . '"' : '"the activity"';
+        $s1 = "for imparting his/her knowledge and expertise as a {$role} during the conduct of the {$title}"
+            . ($context['date_range'] !== '' ? ' held on ' . $context['date_range'] : '')
+            . ($context['venue'] !== '' ? ' at ' . $context['venue'] : '') . '.';
+        $s2 = "Given this {$givenClause} at {$venue}.";
+        return $s1 . '<br><br>' . $s2;
+    }
+
+    public function livePreview(Request $request)
+    {
+        if (!$this->canPrepareCertificate($request->user())) {
+            abort(403, 'You are not allowed to preview certificate requests.');
+        }
+
+        $templateSource = (string) $request->input('template_source', ($request->hasFile('certificate_pdf_shared') ? 'custom' : 'default'));
+        if (!in_array($templateSource, ['default', 'custom'], true)) {
+            return response()->json(['message' => 'Invalid template source.'], 422);
+        }
+
+        $certificateType = (string) ($request->input('certificate_type') ?: ($this->automaticCertificateTypeByRecipientType()[(string) $request->input('recipient_type', '')] ?? 'Certificate of Participation'));
+
+        if ($templateSource === 'custom' && !$request->hasFile('certificate_pdf_shared')) {
+            return response()->json(['message' => 'Please upload the certificate template PDF when choosing custom upload.'], 422);
+        }
+
+        try {
+            if ($templateSource === 'custom') {
+                $sourceAbs = $request->file('certificate_pdf_shared')->getRealPath();
+            } else {
+                $sourceAbs = $this->defaultTemplatePathForCertificateType($certificateType);
+            }
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $participantName = $this->resolveLivePreviewParticipantName($request);
+        $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
+        $verifyUrl = $this->buildVerifyUrl((string) Str::uuid());
+
+        try {
+            $pdfContent = $this->renderStampedPdf(
+                $sourceAbs,
+                $participantName,
+                self::STANDARD_NAME_POS_X,
+                self::STANDARD_NAME_POS_Y,
+                self::STANDARD_NAME_FONT_SIZE,
+                self::STANDARD_NAME_FONT_FAMILY,
+                true,
+                $previewCode,
+                $verifyUrl,
+                true,
+                $this->sanitizeCaptionMarkup($request->input('caption_text')),
+                (string) $request->input('caption_alignment', 'center')
+            );
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response($pdfContent, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="certificate-live-preview.pdf"',
+        ]);
+    }
+
     public function preview(Request $request)
     {
         if (!$this->canPrepareCertificate($request->user())) {
@@ -1161,10 +1524,18 @@ class CertificateAdminController extends Controller
         [$data, $participants] = $this->validatedCertificatePayload($request);
         $first = $participants[0] ?? null;
         if (!$first) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Please provide at least one participant.'], 422);
+            }
+
             return back()->withErrors(['Please provide at least one participant.'])->withInput();
         }
 
-        $sourceAbs = $request->file('certificate_pdf_shared')->getRealPath();
+        if (($data['template_source'] ?? null) === 'custom' && $request->hasFile('certificate_pdf_shared')) {
+            $sourceAbs = $request->file('certificate_pdf_shared')->getRealPath();
+        } else {
+            $sourceAbs = $this->defaultTemplatePathForCertificateType((string) ($data['certificate_type'] ?? ''));
+        }
 
         $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
         $verifyUrl = $this->buildVerifyUrl((string) Str::uuid());
@@ -1180,9 +1551,15 @@ class CertificateAdminController extends Controller
                 true,
                 $previewCode,
                 $verifyUrl,
-                true
+                true,
+                $data['caption_text'] ?? null,
+                $data['caption_alignment'] ?? 'center'
             );
         } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+
             return back()
                 ->withErrors([$e->getMessage()])
                 ->withInput();
@@ -1197,6 +1574,9 @@ class CertificateAdminController extends Controller
     private function validatedCertificatePayload(Request $request): array
     {
         $input = $request->all();
+        if (empty($input['template_source'])) {
+            $input['template_source'] = $request->hasFile('certificate_pdf_shared') ? 'custom' : 'default';
+        }
         $automaticCertificateType = $this->automaticCertificateTypeByRecipientType()[(string) ($input['recipient_type'] ?? '')] ?? null;
         if ($automaticCertificateType !== null) {
             $input['certificate_type'] = $automaticCertificateType;
@@ -1229,17 +1609,21 @@ class CertificateAdminController extends Controller
             'expected_number_of_participants' => ['nullable', 'integer', 'min:1'],
             'issuing_office' => ['required', 'string', 'max:255'],
             'participants_file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:' . self::PARTICIPANTS_FILE_MAX_KB],
-            'certificate_pdf_shared' => ['required', 'file', 'mimes:pdf', 'max:' . self::CERTIFICATE_TEMPLATE_MAX_KB],
+            'template_source' => ['required', 'in:default,custom'],
+            'certificate_pdf_shared' => ['required_if:template_source,custom', 'file', 'mimes:pdf', 'max:' . self::CERTIFICATE_TEMPLATE_MAX_KB],
+            'caption_text' => ['nullable', 'string'],
+            'caption_alignment' => ['nullable', 'string', 'in:left,center,right,justify'],
         ], [
             'participants_file.uploaded' => 'The participants file failed to upload due to a server upload limit. Please reduce file size and try again.',
             'participants_file.max' => 'The participants file must not be greater than ' . (int) floor(self::PARTICIPANTS_FILE_MAX_KB / 1024) . ' MB.',
-            'certificate_pdf_shared.required' => 'Please upload the certificate template PDF.',
+            'certificate_pdf_shared.required_if' => 'Please upload the certificate template PDF when choosing custom upload.',
             'certificate_pdf_shared.mimes' => 'The certificate template must be a valid PDF file.',
             'certificate_pdf_shared.uploaded' => 'The certificate template PDF failed to upload due to a server upload limit (PHP/Nginx). Please compress the PDF or contact admin to increase upload limits.',
             'certificate_pdf_shared.max' => 'The certificate template PDF must not be greater than ' . (int) floor(self::CERTIFICATE_TEMPLATE_MAX_KB / 1024) . ' MB.',
         ]);
 
         $data = $validator->validate();
+        $data['caption_text'] = $this->sanitizeCaptionMarkup($data['caption_text'] ?? null);
         $automaticCertificateType = $this->automaticCertificateTypeByRecipientType()[$data['recipient_type']] ?? null;
         if ($automaticCertificateType !== null) {
             $data['certificate_type'] = $automaticCertificateType;
@@ -1320,6 +1704,8 @@ class CertificateAdminController extends Controller
     {
         return [
             'training_title' => $data['training_title'],
+            'caption_text' => $data['caption_text'] ?? null,
+            'caption_alignment' => $data['caption_alignment'] ?? 'center',
             'activity_type' => $data['activity_type'],
             'certificate_type' => $data['certificate_type'],
             'recipient_type' => $data['recipient_type'],
@@ -1375,6 +1761,8 @@ class CertificateAdminController extends Controller
                 'province' => $participant['province'] ?? null,
                 'industry' => $participant['industry'] ?? null,
                 'training_title' => $payload['training_title'] ?? '',
+                'caption_text' => $payload['caption_text'] ?? null,
+                'caption_alignment' => $payload['caption_alignment'] ?? 'center',
                 'activity_type' => $payload['activity_type'] ?? null,
                 'certificate_type' => $payload['certificate_type'] ?? null,
                 'recipient_type' => $payload['recipient_type'] ?? null,
@@ -1405,8 +1793,14 @@ class CertificateAdminController extends Controller
                 self::STANDARD_NAME_FONT_SIZE,
                 self::STANDARD_NAME_FONT_FAMILY,
                 true,
-                $applyRegionalDirectorESign
+                $applyRegionalDirectorESign,
+                $payload['caption_text'] ?? null,
+                $payload['caption_alignment'] ?? 'center'
             );
+
+            // Anchor the certificate hash to Hedera (no-op unless HEDERA_ENABLED
+            // and a topic is configured). Runs on the queue, never blocks issuance.
+            AnchorCertificateOnHederaJob::dispatch($cert->id);
 
             $generatedCertificates[] = $cert->fresh();
         }
@@ -1488,6 +1882,23 @@ class CertificateAdminController extends Controller
         }
 
         throw new \RuntimeException('Unsupported participants file type.');
+    }
+
+    private function resolveLivePreviewParticipantName(Request $request): string
+    {
+        if ($request->hasFile('participants_file')) {
+            try {
+                $participants = $this->parseParticipantFile($request->file('participants_file'));
+                $firstName = trim((string) ($participants[0]['name'] ?? ''));
+                if ($firstName !== '') {
+                    return $firstName;
+                }
+            } catch (\Throwable $e) {
+                // Fall back to a stable sample name for live preview only.
+            }
+        }
+
+        return 'Sample Participant';
     }
 
     private function resolveParticipants(Request $request, array $data): array
@@ -1996,7 +2407,9 @@ class CertificateAdminController extends Controller
         float $nameFontSize,
         string $nameFontFamily,
         bool $centerName,
-        bool $applyRegionalDirectorESign = false
+        bool $applyRegionalDirectorESign = false,
+        ?string $captionText = null,
+        string $captionAlignment = 'center'
     ): void
     {
         $verifyUrl = $this->buildVerifyUrl($cert->public_token);
@@ -2011,7 +2424,9 @@ class CertificateAdminController extends Controller
             $centerName,
             $cert->certificate_code,
             $verifyUrl,
-            $applyRegionalDirectorESign
+            $applyRegionalDirectorESign,
+            $captionText,
+            $captionAlignment
         );
 
         $stampedRel = 'certificates/stamped/' . $cert->certificate_code . '.pdf';
@@ -2033,7 +2448,9 @@ class CertificateAdminController extends Controller
         bool $centerName,
         string $codeText,
         string $verifyUrl,
-        bool $applyRegionalDirectorESign = false
+        bool $applyRegionalDirectorESign = false,
+        ?string $captionText = null,
+        string $captionAlignment = 'center'
     ): string
     {
         $qrPng = QrCode::format('png')->size(220)->margin(1)->generate($verifyUrl);
@@ -2074,6 +2491,47 @@ class CertificateAdminController extends Controller
                     $nameX = max(0, ($size['width'] - $textWidth) / 2);
                 }
                 $pdf->Text($nameX, $namePosY, $nameText);
+
+                if ($captionText && trim($captionText) !== '') {
+                    $this->setPdfCaptionFont($pdf, 13.2);
+                    $pdf->SetTextColor(60, 60, 60);
+
+                    $captionLines = $this->captionMarkupToStyledLines($captionText);
+                    if ($captionLines !== []) {
+                        $captionWidth = max(80.0, $size['width'] - 80.0);
+                        $captionX = max(40.0, ($size['width'] - $captionWidth) / 2);
+                        $captionY = $namePosY + 11.0;
+                        $captionAlign = match ($captionAlignment) {
+                            'left' => 'L',
+                            'right' => 'R',
+                            'justify' => 'J',
+                            default => 'C',
+                        };
+
+                        $currentCaptionY = $captionY;
+                        foreach ($captionLines as $lineRuns) {
+                            // An empty run list marks a blank line (a double line
+                            // break in the editor) and renders as a vertical gap so
+                            // the PDF mirrors the editor character-for-character.
+                            if ($lineRuns === []) {
+                                $currentCaptionY += 5.2;
+                                continue;
+                            }
+
+                            $wrappedLines = $this->buildStyledPdfLines($pdf, $lineRuns, $captionWidth, 13.2);
+                            $currentCaptionY = $this->renderStyledPdfLines(
+                                $pdf,
+                                $wrappedLines,
+                                $captionX,
+                                $currentCaptionY,
+                                $captionWidth,
+                                5.2,
+                                $captionAlign,
+                                13.2
+                            );
+                        }
+                    }
+                }
 
                 if ($applyRegionalDirectorESign) {
                     $this->stampRegionalDirectorSignatureBlock($pdf, $size);
@@ -2160,6 +2618,420 @@ class CertificateAdminController extends Controller
 
         return $outPath;
     }
+
+    /**
+     * Turn a stored caption into the exact lines the PDF should print.
+     *
+     * The result is an array of "lines", each being an ordered list of styled
+     * runs (`['text' => string, 'style' => '' | 'B' | 'I' | 'BI']`). An empty
+     * array marks a blank line — i.e. a double line break in the editor — which
+     * the renderer turns into a vertical gap.
+     *
+     * Formatting is read straight from the sanitized HTML (`<strong>`, `<em>`,
+     * `<br>`, `<div>`). There is no `**` / `*` markdown round-trip, so literal
+     * asterisks, ampersands and quotation marks are printed verbatim and bold
+     * text never leaks stray markers across wrapped lines.
+     */
+    private function captionMarkupToStyledLines(?string $captionText): array
+    {
+        $markup = $this->sanitizeCaptionMarkup($captionText);
+        if ($markup === null || $markup === '') {
+            return [];
+        }
+
+        // Plain captions (no formatting tags) are printed exactly as typed,
+        // splitting only on real line breaks. No characters are interpreted.
+        if (preg_match('/<[^>]+>/', $markup) !== 1) {
+            $lines = [];
+            foreach (preg_split("/\n/", $markup) ?: [] as $line) {
+                $line = rtrim($line);
+                $lines[] = $line === ''
+                    ? []
+                    : [['text' => $this->toLatin1($line), 'style' => '']];
+            }
+
+            return $this->trimBlankStyledLines($lines);
+        }
+
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $previousState = libxml_use_internal_errors(true);
+        $dom->loadHTML('<div>' . $markup . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previousState);
+
+        $root = $dom->getElementsByTagName('div')->item(0);
+        if (!$root instanceof \DOMElement) {
+            return [];
+        }
+
+        $state = ['lines' => [], 'current' => [], 'lastWasBreak' => true];
+        foreach ($root->childNodes as $childNode) {
+            $this->collectCaptionStyledRuns($childNode, false, false, $state);
+        }
+        if (!$state['lastWasBreak']) {
+            $state['lines'][] = $state['current'];
+        }
+
+        return $this->trimBlankStyledLines($state['lines']);
+    }
+
+    /**
+     * Walk a caption HTML node, appending styled runs and line breaks into the
+     * shared $state accumulator.
+     *
+     * @param array{lines: array<int, array<int, array{text: string, style: string}>>, current: array<int, array{text: string, style: string}>, lastWasBreak: bool} $state
+     */
+    private function collectCaptionStyledRuns(\DOMNode $node, bool $bold, bool $italic, array &$state): void
+    {
+        if ($node instanceof \DOMText) {
+            $text = html_entity_decode($node->nodeValue ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            // Line breaks are carried solely by <br>/<div>; any literal newline or
+            // tab the markup picked up collapses to a single space, matching how
+            // the editor and a browser render inline whitespace.
+            $text = preg_replace('/[\r\n\t]+/', ' ', $text) ?? $text;
+            if ($text === '') {
+                return;
+            }
+
+            $state['current'][] = [
+                'text' => $this->toLatin1($text),
+                'style' => $this->captionStyleToken($bold, $italic),
+            ];
+            $state['lastWasBreak'] = false;
+
+            return;
+        }
+
+        if (!$node instanceof \DOMElement) {
+            return;
+        }
+
+        $tagName = strtolower($node->tagName);
+
+        if ($tagName === 'br') {
+            $state['lines'][] = $state['current'];
+            $state['current'] = [];
+            $state['lastWasBreak'] = true;
+
+            return;
+        }
+
+        $childBold = $bold || in_array($tagName, ['strong', 'b'], true);
+        $childItalic = $italic || in_array($tagName, ['em', 'i'], true);
+        $isBlock = in_array($tagName, ['div', 'p'], true);
+
+        // A block element starts on its own line: flush any pending inline content
+        // before descending into it.
+        if ($isBlock && !$state['lastWasBreak']) {
+            $state['lines'][] = $state['current'];
+            $state['current'] = [];
+            $state['lastWasBreak'] = true;
+        }
+
+        foreach ($node->childNodes as $childNode) {
+            $this->collectCaptionStyledRuns($childNode, $childBold, $childItalic, $state);
+        }
+
+        // ...and it ends the line it occupied, unless a <br> already closed it.
+        if ($isBlock && !$state['lastWasBreak']) {
+            $state['lines'][] = $state['current'];
+            $state['current'] = [];
+            $state['lastWasBreak'] = true;
+        }
+    }
+
+    private function captionStyleToken(bool $bold, bool $italic): string
+    {
+        return ($bold ? 'B' : '') . ($italic ? 'I' : '');
+    }
+
+    /**
+     * Drop blank lines from the start and end of a caption so leading/trailing
+     * empty editor lines do not push the caption off-centre.
+     *
+     * @param array<int, array<int, array{text: string, style: string}>> $lines
+     * @return array<int, array<int, array{text: string, style: string}>>
+     */
+    private function trimBlankStyledLines(array $lines): array
+    {
+        while ($lines !== [] && $lines[array_key_first($lines)] === []) {
+            array_shift($lines);
+        }
+        while ($lines !== [] && $lines[array_key_last($lines)] === []) {
+            array_pop($lines);
+        }
+
+        return array_values($lines);
+    }
+
+    private function sanitizeCaptionMarkup(?string $captionText): ?string
+    {
+        $captionText = trim((string) $captionText);
+        if ($captionText === '') {
+            return null;
+        }
+
+        $captionText = preg_replace("/\r\n?/", "\n", $captionText) ?? $captionText;
+        if (preg_match('/<[^>]+>/', $captionText) !== 1) {
+            return $captionText;
+        }
+
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $previousState = libxml_use_internal_errors(true);
+        $dom->loadHTML('<div>' . $captionText . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previousState);
+
+        $root = $dom->getElementsByTagName('div')->item(0);
+        if (!$root instanceof \DOMElement) {
+            return null;
+        }
+
+        $sanitized = trim($this->sanitizeCaptionHtmlChildren($root));
+
+        return $sanitized !== '' ? $sanitized : null;
+    }
+
+    private function sanitizeCaptionHtmlChildren(\DOMNode $node): string
+    {
+        $buffer = '';
+        foreach ($node->childNodes as $childNode) {
+            $buffer .= $this->sanitizeCaptionHtmlNode($childNode);
+        }
+
+        return $buffer;
+    }
+
+    private function sanitizeCaptionHtmlNode(\DOMNode $node): string
+    {
+        if ($node instanceof \DOMText) {
+            return htmlspecialchars($node->nodeValue ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
+
+        if (!$node instanceof \DOMElement) {
+            return '';
+        }
+
+        $tagName = strtolower($node->tagName);
+        $content = $this->sanitizeCaptionHtmlChildren($node);
+
+        return match ($tagName) {
+            'strong', 'b' => '<strong>' . $content . '</strong>',
+            'em', 'i' => '<em>' . $content . '</em>',
+            'br' => '<br>',
+            'div', 'p' => '<div>' . ($content !== '' ? $content : '<br>') . '</div>',
+            default => $content,
+        };
+    }
+
+    private function setPdfCaptionFont(Fpdi $pdf, float $size, string $style = ''): bool
+    {
+        $fontDir = resource_path('fonts');
+        $style = strtoupper($style);
+        $fontMap = [
+            '' => 'Montserrat-Regular.php',
+            'B' => 'Montserrat-Bold.php',
+            'I' => 'Montserrat-Italic.php',
+            'BI' => 'Montserrat-BoldItalic.php',
+        ];
+        $fontFile = $fontMap[$style] ?? $fontMap[''];
+        $fontDefinition = $fontDir . DIRECTORY_SEPARATOR . $fontFile;
+
+        if (is_file($fontDefinition)) {
+            $pdf->AddFont('Montserrat', $style, $fontFile, $fontDir);
+            $pdf->SetFont('Montserrat', $style, $size);
+            return true;
+        }
+
+        $regularDefinition = $fontDir . DIRECTORY_SEPARATOR . 'Montserrat-Regular.php';
+        if (is_file($regularDefinition)) {
+            $pdf->AddFont('Montserrat', '', 'Montserrat-Regular.php', $fontDir);
+            $pdf->SetFont('Montserrat', '', $size);
+            return true;
+        }
+
+        $fallbackStyle = in_array($style, ['B', 'I', 'BI'], true) ? $style : '';
+        $pdf->SetFont('Helvetica', $fallbackStyle, $size);
+        return false;
+    }
+
+    private function hasPdfCaptionFontDefinition(string $style = ''): bool
+    {
+        $style = strtoupper($style);
+        $fontMap = [
+            '' => 'Montserrat-Regular.php',
+            'B' => 'Montserrat-Bold.php',
+            'I' => 'Montserrat-Italic.php',
+            'BI' => 'Montserrat-BoldItalic.php',
+        ];
+
+        return is_file(resource_path('fonts/' . ($fontMap[$style] ?? $fontMap[''])));
+    }
+
+    /**
+     * Wrap a single caption line (a list of styled runs) into rendered visual
+     * lines that each fit within $maxWidth.
+     *
+     * @param array<int, array{text: string, style: string}> $runs
+     */
+    private function buildStyledPdfLines(Fpdi $pdf, array $runs, float $maxWidth, float $fontSize): array
+    {
+        $lines = [];
+        $currentLine = [];
+        $currentWidth = 0.0;
+
+        foreach ($runs as $run) {
+            $pieces = preg_split('/(\s+)/u', $run['text'], -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [];
+            foreach ($pieces as $piece) {
+                $isWhitespace = trim($piece) === '';
+                if ($isWhitespace) {
+                    if ($currentLine === [] || end($currentLine)['is_space']) {
+                        continue;
+                    }
+                    $spaceWidth = $this->measurePdfCaptionText($pdf, ' ', $fontSize, $run['style']);
+                    $currentLine[] = ['text' => ' ', 'style' => $run['style'], 'width' => $spaceWidth, 'is_space' => true];
+                    $currentWidth += $spaceWidth;
+                    continue;
+                }
+
+                $wordPieces = $this->splitPdfWordToWidthWithStyle($pdf, $piece, $maxWidth, $fontSize, $run['style']);
+                foreach ($wordPieces as $wordPiece) {
+                    $wordWidth = $this->measurePdfCaptionText($pdf, $wordPiece, $fontSize, $run['style']);
+
+                    if ($currentLine !== [] && $currentWidth + $wordWidth > $maxWidth) {
+                        while ($currentLine !== [] && end($currentLine)['is_space']) {
+                            $spaceToken = array_pop($currentLine);
+                            $currentWidth -= $spaceToken['width'];
+                        }
+                        if ($currentLine !== []) {
+                            $lines[] = ['tokens' => $currentLine, 'width' => $currentWidth];
+                        }
+                        $currentLine = [];
+                        $currentWidth = 0.0;
+                    }
+
+                    $currentLine[] = ['text' => $wordPiece, 'style' => $run['style'], 'width' => $wordWidth, 'is_space' => false];
+                    $currentWidth += $wordWidth;
+                }
+            }
+        }
+
+        while ($currentLine !== [] && end($currentLine)['is_space']) {
+            $spaceToken = array_pop($currentLine);
+            $currentWidth -= $spaceToken['width'];
+        }
+        if ($currentLine !== []) {
+            $lines[] = ['tokens' => $currentLine, 'width' => $currentWidth];
+        }
+
+        return $lines;
+    }
+
+    private function renderStyledPdfLines(
+        Fpdi $pdf,
+        array $lines,
+        float $x,
+        float $y,
+        float $width,
+        float $lineHeight,
+        string $align,
+        float $fontSize
+    ): float {
+        $currentY = $y;
+        $lineCount = count($lines);
+
+        foreach ($lines as $index => $line) {
+            $lineWidth = (float) ($line['width'] ?? 0.0);
+            $tokens = (array) ($line['tokens'] ?? []);
+            $cursorX = match ($align) {
+                'R' => $x + max(0.0, $width - $lineWidth),
+                'C' => $x + max(0.0, ($width - $lineWidth) / 2),
+                default => $x,
+            };
+
+            $spaceCount = count(array_filter($tokens, fn (array $token) => $token['is_space'] ?? false));
+            $extraSpace = ($align === 'J' && $index < $lineCount - 1 && $spaceCount > 0)
+                ? max(0.0, ($width - $lineWidth) / $spaceCount)
+                : 0.0;
+
+            foreach ($tokens as $token) {
+                if ($token['is_space']) {
+                    $cursorX += $token['width'] + $extraSpace;
+                    continue;
+                }
+
+                $this->drawPdfCaptionToken($pdf, $cursorX, $currentY, $lineHeight, $token['text'], $token['style'], $fontSize);
+                $cursorX += $token['width'];
+            }
+
+            $currentY += $lineHeight;
+        }
+
+        return $currentY;
+    }
+
+    private function drawPdfCaptionToken(
+        Fpdi $pdf,
+        float $x,
+        float $y,
+        float $lineHeight,
+        string $text,
+        string $style,
+        float $fontSize
+    ): void {
+        $usesMontserrat = $this->setPdfCaptionFont($pdf, $fontSize, $style);
+        $pdf->SetXY($x, $y);
+        $pdf->Write($lineHeight, $text);
+
+        if ($usesMontserrat && str_contains($style, 'B') && !$this->hasPdfCaptionFontDefinition($style)) {
+            $boldOffsets = [
+                [0.12, 0.00],
+                [0.24, 0.00],
+                [0.12, 0.06],
+                [0.24, 0.06],
+            ];
+
+            foreach ($boldOffsets as [$offsetX, $offsetY]) {
+                $pdf->SetXY($x + $offsetX, $y + $offsetY);
+                $pdf->Write($lineHeight, $text);
+            }
+        }
+    }
+
+    private function measurePdfCaptionText(Fpdi $pdf, string $text, float $fontSize, string $style = ''): float
+    {
+        $this->setPdfCaptionFont($pdf, $fontSize, $style);
+        return $pdf->GetStringWidth($text);
+    }
+
+    private function splitPdfWordToWidthWithStyle(Fpdi $pdf, string $word, float $maxWidth, float $fontSize, string $style = ''): array
+    {
+        if ($word === '' || $this->measurePdfCaptionText($pdf, $word, $fontSize, $style) <= $maxWidth) {
+            return [$word];
+        }
+
+        $segments = [];
+        $current = '';
+        $characters = preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        foreach ($characters as $character) {
+            $candidate = $current . $character;
+            if ($current !== '' && $this->measurePdfCaptionText($pdf, $candidate, $fontSize, $style) > $maxWidth) {
+                $segments[] = $current;
+                $current = $character;
+                continue;
+            }
+
+            $current = $candidate;
+        }
+
+        if ($current !== '') {
+            $segments[] = $current;
+        }
+
+        return $segments === [] ? [$word] : $segments;
+    }
+
 
     private function stampRegionalDirectorSignatureBlock(Fpdi $pdf, array $pageSize): void
     {
@@ -2328,6 +3200,11 @@ class CertificateAdminController extends Controller
         $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
         $verifyUrl = $this->buildVerifyUrl((string) Str::uuid());
 
+        // The caption lives in the endorsement payload (see buildTrainingPayload),
+        // not as a column on the endorsement row, so read it from there to match
+        // what the final generated certificate prints on approval.
+        $endorsementPayload = (array) $endorsement->payload;
+
         try {
             $pdfContent = $this->renderStampedPdf(
                 $storage['absolute'],
@@ -2339,7 +3216,9 @@ class CertificateAdminController extends Controller
                 true,
                 $previewCode,
                 $verifyUrl,
-                true
+                true,
+                $endorsementPayload['caption_text'] ?? null,
+                $endorsementPayload['caption_alignment'] ?? 'center'
             );
         } catch (\Throwable $e) {
             report($e);

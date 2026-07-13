@@ -837,7 +837,7 @@ class CertificateAdminController extends Controller
         $this->ensureRegionalDirectorAction($user);
 
         $data = $request->validate([
-            'rejection_reason' => ['nullable', 'string', 'max:1000'],
+            'rejection_reason' => ['required', 'string', 'max:1000'],
         ]);
 
         $endorsement = CertificateEndorsement::findOrFail($id);

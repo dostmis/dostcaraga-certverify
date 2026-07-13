@@ -480,6 +480,112 @@
       font-weight: 700;
     }
 
+    .rda-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .rda-modal-overlay.active {
+      display: flex;
+    }
+
+    .rda-modal {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 25px 60px rgba(15, 23, 42, 0.25);
+      width: 100%;
+      max-width: 480px;
+      padding: 28px 24px;
+    }
+
+    .rda-modal-title {
+      font-size: 18px;
+      font-weight: 900;
+      color: #0f172a;
+      margin: 0 0 6px;
+    }
+
+    .rda-modal-desc {
+      font-size: 13px;
+      color: #64748b;
+      margin: 0 0 16px;
+      font-weight: 600;
+    }
+
+    .rda-modal-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 800;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+
+    .rda-modal-textarea {
+      width: 100%;
+      min-height: 100px;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .rda-modal-textarea:focus {
+      border-color: #dc2626;
+      box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+    }
+
+    .rda-modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+      justify-content: flex-end;
+    }
+
+    .rda-modal-btn {
+      border: 1px solid;
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .rda-modal-btn-cancel {
+      background: #f1f5f9;
+      border-color: #e2e8f0;
+      color: #475569;
+    }
+
+    .rda-modal-btn-reject {
+      background: #dc2626;
+      border-color: #dc2626;
+      color: #fff;
+    }
+
+    .rda-modal-btn-reject:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .rda-modal-hint {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 6px;
+      font-weight: 600;
+    }
+
     @media (max-width: 760px) {
       .rda-stats,
       .rda-meta,
@@ -634,10 +740,7 @@
                   <button type="button" class="rda-action rda-action-secondary" disabled>No Participants File</button>
                 @endif
 
-                <form method="POST" action="{{ route('admin.certs.endorsements.reject', ['id' => $endorsement->id]) }}" onsubmit="return confirm('Reject this endorsement request?')">
-                  @csrf
-                  <button type="submit" class="rda-action rda-action-danger">Reject</button>
-                </form>
+                <button type="button" class="rda-action rda-action-danger" onclick="openRejectModal({{ $endorsement->id }})">Reject</button>
               </div>
             </div>
           </article>
@@ -683,10 +786,50 @@
                 {{ $endorsement->date_range }} · {{ $payload['recipient_type'] ?? '-' }} ·
                 {{ $endorsement->submitter?->name ?? ('User #' . ($endorsement->submitted_by ?? 'N/A')) }}
               </p>
+              @if ($endorsement->status === 'rd_rejected' && $endorsement->rejection_reason)
+                <p class="rda-recent-copy" style="margin-top: 8px; color: #dc2626; font-style: italic;">
+                  <strong>Remarks:</strong> {{ $endorsement->rejection_reason }}
+                </p>
+              @endif
             </article>
           @endforeach
         </div>
       </section>
     @endif
   </div>
+
+  <div class="rda-modal-overlay" id="rejectModal">
+    <div class="rda-modal">
+      <h2 class="rda-modal-title">Reject Endorsement</h2>
+      <p class="rda-modal-desc">Please provide a reason for rejecting this certificate endorsement. This will be visible to the submitter.</p>
+      <form method="POST" id="rejectForm">
+        @csrf
+        <label class="rda-modal-label" for="rejection_reason">Remarks / Reason for Rejection</label>
+        <textarea class="rda-modal-textarea" name="rejection_reason" id="rejection_reason" placeholder="e.g. Incomplete participant list, incorrect dates, missing signatures..." required></textarea>
+        <p class="rda-modal-hint">Required. Maximum 1,000 characters.</p>
+        <div class="rda-modal-actions">
+          <button type="button" class="rda-modal-btn rda-modal-btn-cancel" onclick="closeRejectModal()">Cancel</button>
+          <button type="submit" class="rda-modal-btn rda-modal-btn-reject" id="rejectSubmitBtn">Reject Endorsement</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function openRejectModal(endorsementId) {
+      const modal = document.getElementById('rejectModal');
+      const form = document.getElementById('rejectForm');
+      form.action = '{{ url("/admin/certificates/endorsements") }}/' + endorsementId + '/reject';
+      document.getElementById('rejection_reason').value = '';
+      modal.classList.add('active');
+    }
+
+    function closeRejectModal() {
+      document.getElementById('rejectModal').classList.remove('active');
+    }
+
+    document.getElementById('rejectModal').addEventListener('click', function(e) {
+      if (e.target === this) closeRejectModal();
+    });
+  </script>
 </x-admin-layout>

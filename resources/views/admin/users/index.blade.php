@@ -104,6 +104,11 @@
                     <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-extrabold ring-1 {{ $badge }}">
                       {{ strtoupper($user->approval_status) }}
                     </span>
+                    @if ($user->approval_status === 'rejected' && $user->rejection_reason)
+                      <p class="mt-1 max-w-xs whitespace-pre-wrap break-words text-xs text-slate-500">
+                        <span class="font-semibold text-slate-600">Reason:</span> {{ $user->rejection_reason }}
+                      </p>
+                    @endif
                   </td>
                   <td class="py-3 pr-4">
                     <div class="flex items-center gap-2 whitespace-nowrap">
@@ -121,12 +126,13 @@
                         </form>
                       @endif
                       @if ($user->approval_status !== 'rejected')
-                        <form method="POST" action="{{ route('admin.users.reject', ['id' => $user->id]) }}">
-                          @csrf
-                          <button class="inline-flex items-center rounded-xl bg-red-600 px-3 py-1.5 text-xs font-extrabold text-white hover:bg-red-700">
-                            Reject
-                          </button>
-                        </form>
+                        <button
+                          type="button"
+                          onclick="openRejectUserModal({{ $user->id }}, @js($user->name))"
+                          class="inline-flex items-center rounded-xl bg-red-600 px-3 py-1.5 text-xs font-extrabold text-white hover:bg-red-700"
+                        >
+                          Reject
+                        </button>
                       @endif
                     </div>
                   </td>
@@ -155,4 +161,67 @@
       </div>
     </div>
   </div>
+
+  {{-- Reject user modal --}}
+  <div id="rejectUserModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <h2 class="text-lg font-extrabold text-slate-900">Reject Account Request</h2>
+      <p class="mt-1 text-sm text-slate-500">
+        Provide a reason for rejecting <span id="rejectUserName" class="font-semibold text-slate-700"></span>.
+        This will be shown to the user when they try to log in.
+      </p>
+      <form id="rejectUserForm" method="POST" class="mt-4">
+        @csrf
+        <label for="rejectUserReason" class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">
+          Reason for Rejection
+        </label>
+        <textarea
+          id="rejectUserReason"
+          name="rejection_reason"
+          rows="4"
+          required
+          maxlength="1000"
+          placeholder="e.g. Not a DOST Caraga staff member, duplicate account, invalid role requested..."
+          class="w-full rounded-xl border-slate-300 text-sm focus:border-red-500 focus:ring-red-500"
+        ></textarea>
+        <p class="mt-1 text-xs text-slate-400">Required. Maximum 1,000 characters.</p>
+        <div class="mt-5 flex justify-end gap-2">
+          <button type="button" onclick="closeRejectUserModal()"
+            class="inline-flex items-center rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+            Cancel
+          </button>
+          <button type="submit"
+            class="inline-flex items-center rounded-xl bg-red-600 px-4 py-2 text-xs font-extrabold text-white hover:bg-red-700">
+            Reject Account
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function openRejectUserModal(userId, userName) {
+      const modal = document.getElementById('rejectUserModal');
+      const form = document.getElementById('rejectUserForm');
+      form.action = '{{ url('admin/users') }}/' + userId + '/reject';
+      document.getElementById('rejectUserName').textContent = userName;
+      document.getElementById('rejectUserReason').value = '';
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      document.getElementById('rejectUserReason').focus();
+    }
+
+    function closeRejectUserModal() {
+      const modal = document.getElementById('rejectUserModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    document.getElementById('rejectUserModal').addEventListener('click', function (e) {
+      if (e.target === this) closeRejectUserModal();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeRejectUserModal();
+    });
+  </script>
 </x-admin-layout>

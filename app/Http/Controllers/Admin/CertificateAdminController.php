@@ -7,6 +7,8 @@ use App\Jobs\AnchorCertificateOnHederaJob;
 use App\Jobs\SendCertificateEmailJob;
 use App\Models\Certificate;
 use App\Models\CertificateEndorsement;
+use App\Models\ParticipantIntake;
+use App\Models\ParticipantIntakeEvent;
 use App\Models\Recipient;
 use App\Models\Setting;
 use App\Models\User;
@@ -263,6 +265,16 @@ class CertificateAdminController extends Controller
         $pillars = $this->pillars();
         $isRegionalDirector = $this->isRegionalDirector($user);
 
+        $intakeEvents = ParticipantIntakeEvent::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->get(['id', 'event_name', 'is_active', 'created_at']);
+        if ($isRegionalDirector) {
+            $intakeEvents = ParticipantIntakeEvent::query()
+                ->orderByDesc('created_at')
+                ->get(['id', 'event_name', 'is_active', 'user_id', 'created_at']);
+        }
+
         return view('admin.certificates.create', compact(
             'defaults',
             'topics',
@@ -282,8 +294,33 @@ class CertificateAdminController extends Controller
             'sscpProgramLabel',
             'customDostProjectOptionLabel',
             'pillars',
-            'isRegionalDirector'
+            'isRegionalDirector',
+            'intakeEvents'
         ));
+    }
+
+    public function intakeEventParticipants(Request $request, int $eventId)
+    {
+        $user = $request->user();
+        if (!$this->canPrepareCertificate($user)) {
+            abort(403);
+        }
+
+        $event = ParticipantIntakeEvent::findOrFail($eventId);
+        if (!$this->isRegionalDirector($user) && $event->user_id !== $user->id) {
+            abort(403, 'You can only access your own intake events.');
+        }
+
+        $participants = ParticipantIntake::where('participant_intake_event_id', $eventId)
+            ->where('status', 'pending')
+            ->orderBy('participant_name')
+            ->get(['id', 'participant_name', 'first_name', 'middle_initial', 'last_name', 'email', 'gender', 'age_range', 'region', 'province', 'city_municipality', 'barangay', 'block_lot_purok', 'industry', 'recipient_id']);
+
+        return response()->json([
+            'event_name' => $event->event_name,
+            'count' => $participants->count(),
+            'participants' => $participants,
+        ]);
     }
 
     private function topics(): array
@@ -363,6 +400,42 @@ class CertificateAdminController extends Controller
         Storage::disk('local')->put($localPath, file_get_contents($sourceAbs));
 
         return $localPath;
+    }
+
+    private function storeParticipantsFileForEndorsement(Request $request, array $data, array $participants): string
+    {
+        if ($request->hasFile('participants_file')) {
+            $participantsFile = $request->file('participants_file');
+            $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
+            return $participantsFile->storeAs(
+                'certificate-endorsements/participants',
+                'participants_' . Str::uuid() . '.' . $participantsExt,
+                'local'
+            );
+        }
+
+        $csvPath = 'certificate-endorsements/participants/participants_' . Str::uuid() . '.csv';
+        $handle = fopen('php://temp', 'r+');
+        fputcsv($handle, ['Participant Name', 'Email', 'Gender', 'Age Range', 'Region', 'Province', 'City/Municipality', 'Barangay', 'Block/Lot/Purok', 'Industry']);
+        foreach ($participants as $p) {
+            fputcsv($handle, [
+                $p['name'] ?? '',
+                $p['email'] ?? '',
+                $p['gender'] ?? '',
+                $p['age_range'] ?? ($p['age'] ?? ''),
+                $p['region'] ?? '',
+                $p['province'] ?? '',
+                $p['city_municipality'] ?? '',
+                $p['barangay'] ?? '',
+                $p['block_lot_purok'] ?? '',
+                $p['industry'] ?? '',
+            ]);
+        }
+        rewind($handle);
+        Storage::disk('local')->put($csvPath, stream_get_contents($handle));
+        fclose($handle);
+
+        return $csvPath;
     }
 
     private function automaticCertificateTypeByRecipientType(): array
@@ -501,10 +574,13 @@ class CertificateAdminController extends Controller
             ['name' => 'Promoting Resilient Opportunities for Growth through Smart and Sustainable Communities in the Municipality of San Jose (PROGRESS-San Jose)', 'code' => 'SSCP-2026-03'],
             ['name' => 'Strengthening Smart and Sustainable Governance in PLGU-Surigao del Norte and LGU-Mainit through Digital Transformation and Strategic Roadmapping', 'code' => 'SSCP-2026-04'],
             ['name' => 'Building a Smart and Sustainable City through STI-based Technologies for Tandag City (SMART Tandag: Year 2)', 'code' => 'SSCP-2026-05'],
+            ['name' => 'Others', 'code' => '', 'program_prefix' => '__ALL__', 'label' => $this->customDostProjectOptionLabel()],
         ];
 
         return array_map(function (array $project): array {
-            $project['program_prefix'] = $this->dostProjectProgramPrefix((string) ($project['code'] ?? ''));
+            if (!isset($project['program_prefix'])) {
+                $project['program_prefix'] = $this->dostProjectProgramPrefix((string) ($project['code'] ?? ''));
+            }
 
             return $project;
         }, $projects);
@@ -609,6 +685,17 @@ class CertificateAdminController extends Controller
             Storage::disk('local')->delete($sharedPath);
         }
 
+        if (($data['participant_source'] ?? 'file') === 'intake_link' && !empty($data['intake_event_id'])) {
+            $intakeIds = array_filter(array_column($participants, 'intake_id'));
+            if (!empty($intakeIds)) {
+                ParticipantIntake::whereIn('id', $intakeIds)->update([
+                    'status' => 'rd_approved',
+                    'rd_approved_at' => now(),
+                    'rd_approved_by' => $request->user()->id,
+                ]);
+            }
+        }
+
         $generated = count($generatedCertificates);
 
         return redirect()
@@ -629,22 +716,27 @@ class CertificateAdminController extends Controller
         $matchResults = [];
         $unresolvedCount = 0;
 
+        $isFromIntakeLink = (($data['participant_source'] ?? 'file') === 'intake_link');
+
         foreach ($participants as $i => $participant) {
-            $result = $matchingService->match($participant);
-            $matchResults[$i] = $result;
-            if ($result['recipient_id'] === null) {
-                $unresolvedCount++;
+            if ($isFromIntakeLink && !empty($participant['recipient_id'])) {
+                $matchResults[$i] = [
+                    'recipient_id' => $participant['recipient_id'],
+                    'confidence' => 'intake_linked',
+                    'ambiguous' => false,
+                    'candidates' => [],
+                ];
+            } else {
+                $result = $matchingService->match($participant);
+                $matchResults[$i] = $result;
+                if ($result['recipient_id'] === null) {
+                    $unresolvedCount++;
+                }
             }
         }
 
         if ($unresolvedCount > 0) {
-            $participantsFile = $request->file('participants_file');
-            $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
-            $participantsFilePath = $participantsFile->storeAs(
-                'certificate-endorsements/participants',
-                'participants_' . Str::uuid() . '.' . $participantsExt,
-                'local'
-            );
+            $participantsFilePath = $this->storeParticipantsFileForEndorsement($request, $data, $participants);
 
             $templatePdfPath = $this->storeTemplatePdfForRequest($data, $request, 'certificate-endorsements/templates');
 
@@ -740,14 +832,7 @@ class CertificateAdminController extends Controller
             $participantsFilePath = $pending['participants_file_path'];
             $templatePdfPath = $pending['template_pdf_path'];
         } else {
-            $participantsFile = $request->file('participants_file');
-            $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
-            $participantsFilePath = $participantsFile->storeAs(
-                'certificate-endorsements/participants',
-                'participants_' . Str::uuid() . '.' . $participantsExt,
-                'local'
-            );
-
+            $participantsFilePath = $this->storeParticipantsFileForEndorsement($request, $data, $participants);
             $templatePdfPath = $this->storeTemplatePdfForRequest($data, $request, 'certificate-endorsements/templates');
         }
 
@@ -762,6 +847,17 @@ class CertificateAdminController extends Controller
             'template_pdf_path' => $templatePdfPath,
             'payload' => $payload,
         ]);
+
+        if (($data['participant_source'] ?? 'file') === 'intake_link' && !empty($data['intake_event_id'])) {
+            $intakeIds = array_filter(array_column($participants, 'intake_id'));
+            if (!empty($intakeIds)) {
+                ParticipantIntake::whereIn('id', $intakeIds)->update([
+                    'status' => 'endorsed',
+                    'endorsed_at' => now(),
+                    'endorsed_by' => $user->id,
+                ]);
+            }
+        }
 
         $this->notifyRegionalDirectorMessengerOnEndorsement($endorsement, $user);
         $this->notifyRegionalDirectorTelegramOnEndorsement($endorsement, $user);
@@ -1577,13 +1673,22 @@ SYS;
         if (empty($input['template_source'])) {
             $input['template_source'] = $request->hasFile('certificate_pdf_shared') ? 'custom' : 'default';
         }
+        if (empty($input['participant_source'])) {
+            $input['participant_source'] = $request->hasFile('participants_file') ? 'file' : 'intake_link';
+        }
         $automaticCertificateType = $this->automaticCertificateTypeByRecipientType()[(string) ($input['recipient_type'] ?? '')] ?? null;
         if ($automaticCertificateType !== null) {
             $input['certificate_type'] = $automaticCertificateType;
         }
 
+        $participantsFileRules = ($input['participant_source'] === 'file')
+            ? ['required', 'file', 'mimes:csv,txt,xlsx', 'max:' . self::PARTICIPANTS_FILE_MAX_KB]
+            : ['nullable', 'file', 'mimes:csv,txt,xlsx', 'max:' . self::PARTICIPANTS_FILE_MAX_KB];
+
         $validator = Validator::make($input, [
             'training_title' => ['required', 'string', 'max:255'],
+            'participant_source' => ['required', 'in:intake_link,file'],
+            'intake_event_id' => ['required_if:participant_source,intake_link', 'nullable', 'integer', 'exists:participant_intake_events,id'],
             'activity_type' => ['required', Rule::in($this->activityTypes())],
             'activity_type_other' => ['exclude_unless:activity_type,Others', 'required', 'string', 'max:255', 'regex:/.*\S.*/'],
             'certificate_type' => ['required', Rule::in($this->certificateTypes())],
@@ -1608,7 +1713,7 @@ SYS;
             'training_budget' => ['nullable', 'numeric', 'min:0'],
             'expected_number_of_participants' => ['nullable', 'integer', 'min:1'],
             'issuing_office' => ['required', 'string', 'max:255'],
-            'participants_file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:' . self::PARTICIPANTS_FILE_MAX_KB],
+            'participants_file' => $participantsFileRules,
             'template_source' => ['required', 'in:default,custom'],
             'certificate_pdf_shared' => ['required_if:template_source,custom', 'file', 'mimes:pdf', 'max:' . self::CERTIFICATE_TEMPLATE_MAX_KB],
             'caption_text' => ['nullable', 'string'],
@@ -1903,6 +2008,10 @@ SYS;
 
     private function resolveParticipants(Request $request, array $data): array
     {
+        if (($data['participant_source'] ?? 'file') === 'intake_link' && !empty($data['intake_event_id'])) {
+            return $this->resolveParticipantsFromIntakeEvent((int) $data['intake_event_id'], $request->user());
+        }
+
         if ($request->hasFile('participants_file')) {
             $file = $request->file('participants_file');
             $ext = strtolower($file->getClientOriginalExtension());
@@ -1972,6 +2081,44 @@ SYS;
         }
 
         return array_values($rows);
+    }
+
+    private function resolveParticipantsFromIntakeEvent(int $eventId, ?User $user): array
+    {
+        $event = ParticipantIntakeEvent::find($eventId);
+        if (!$event) {
+            return [];
+        }
+
+        if (!$this->isRegionalDirector($user) && $event->user_id !== $user?->id) {
+            return [];
+        }
+
+        $intakes = ParticipantIntake::where('participant_intake_event_id', $eventId)
+            ->where('status', 'pending')
+            ->orderBy('participant_name')
+            ->get();
+
+        $rows = [];
+        foreach ($intakes as $intake) {
+            $rows[] = [
+                'name' => $intake->participant_name,
+                'email' => $intake->email ?: null,
+                'gender' => $intake->gender ?: null,
+                'age' => null,
+                'age_range' => $intake->age_range ?: null,
+                'block_lot_purok' => $intake->block_lot_purok ?: null,
+                'region' => $intake->region ?: null,
+                'city_municipality' => $intake->city_municipality ?: null,
+                'barangay' => $intake->barangay ?: null,
+                'province' => $intake->province ?: null,
+                'industry' => $intake->industry ?: null,
+                'intake_id' => $intake->id,
+                'recipient_id' => $intake->recipient_id,
+            ];
+        }
+
+        return $rows;
     }
 
     private function parseParticipantFile($file): array

@@ -36,6 +36,7 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
         Route::get('/certificates', [CertificateAdminController::class, 'index'])->name('admin.certs.index');
         Route::get('/certificates/approvals', [CertificateAdminController::class, 'approvals'])->name('admin.certs.approvals');
         Route::get('/certificates/create', [CertificateAdminController::class, 'create'])->name('admin.certs.create');
+        Route::get('/certificates/intake-event/{eventId}/participants', [CertificateAdminController::class, 'intakeEventParticipants'])->name('admin.certs.intake-participants');
         Route::post('/certificates/caption-suggest', [CertificateAdminController::class, 'suggestCaption'])->name('admin.certs.caption-suggest');
         Route::post('/certificates/live-preview', [CertificateAdminController::class, 'livePreview'])->name('admin.certs.live-preview');
         Route::post('/certificates/preview', [CertificateAdminController::class, 'preview'])->name('admin.certs.preview');
@@ -103,7 +104,7 @@ Route::get('/participant-intake/{token}', [ParticipantIntakeController::class, '
     ->middleware('throttle:60,1')
     ->name('participant.intake');
 Route::post('/participant-intake/{token}', [ParticipantIntakeController::class, 'store'])
-    ->middleware('throttle:10,1')
+    ->middleware('throttle:50,1')
     ->name('participant.intake.submit');
 
 Route::post('/webhooks/telegram/{secret}', TelegramWebhookController::class)

@@ -1231,6 +1231,115 @@
         justify-content: flex-start;
       }
     }
+
+    /* Participant Source Toggle */
+    .source-toggle {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .source-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 14px 16px;
+      border: 2px solid var(--card-border);
+      border-radius: 12px;
+      cursor: pointer;
+      flex: 1;
+      min-width: 200px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .source-option:has(input:checked) {
+      border-color: var(--accent);
+      background: rgba(13, 79, 140, 0.04);
+    }
+
+    .source-option input[type="radio"] {
+      margin-top: 3px;
+      accent-color: var(--accent);
+    }
+
+    .source-option-label {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .source-option-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .source-option-desc {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Intake Participants Preview Table */
+    .intake-preview-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #e8f3ff;
+      color: #0b4c8c;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid #b9d6ef;
+    }
+
+    .intake-participants-table-wrap {
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+    }
+
+    .intake-participants-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .intake-participants-table th,
+    .intake-participants-table td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid #eef2f7;
+    }
+
+    .intake-participants-table th {
+      background: #f8fafc;
+      font-weight: 700;
+      color: var(--label);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .intake-participants-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .btn-sm {
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--accent);
+      cursor: pointer;
+    }
+
+    .btn-sm:hover {
+      background: #f0f7ff;
+    }
   </style>
 </head>
 <body>
@@ -1410,24 +1519,14 @@
                       data-program-prefix="{{ $project['program_prefix'] ?? '' }}"
                       @selected(old('dost_project') === $project['name'])
                     >
-                      {{ $project['name'] }}
+                      {{ $project['label'] ?? $project['name'] }}
                     </option>
                   @endforeach
-                  @if (old('dost_project') === 'Others')
-                    <option
-                      value="Others"
-                      data-code=""
-                      data-program-prefix="SSCP"
-                      selected
-                    >
-                      {{ $customDostProjectOptionLabel ?? 'Others, please specify' }}
-                    </option>
-                  @endif
                 </select>
               </div>
             </div>
 
-            <div class="row" id="dostProjectOtherRow" style="{{ old('dost_program') === ($sscpProgramLabel ?? null) && old('dost_project') === 'Others' ? '' : 'display:none;' }}">
+            <div class="row" id="dostProjectOtherRow" style="{{ old('dost_project') === 'Others' ? '' : 'display:none;' }}">
               <label>If Others, please specify DOST Project</label>
               <input
                 type="text"
@@ -1435,7 +1534,7 @@
                 name="dost_project_other"
                 value="{{ old('dost_project_other') }}"
                 maxlength="255"
-                {{ old('dost_program') === ($sscpProgramLabel ?? null) && old('dost_project') === 'Others' ? 'required' : '' }}
+                {{ old('dost_project') === 'Others' ? 'required' : '' }}
               >
             </div>
 
@@ -1569,6 +1668,67 @@
             </div>
 
             <div class="row">
+              <label>Participants Source</label>
+              <div class="source-toggle">
+                <label class="source-option">
+                  <input type="radio" name="participant_source" value="intake_link" {{ old('participant_source', 'intake_link') === 'intake_link' ? 'checked' : '' }} id="sourceIntakeLink">
+                  <span class="source-option-label">
+                    <span class="source-option-title">From Intake Link</span>
+                    <span class="source-option-desc">Select participants who filled up your intake link</span>
+                  </span>
+                </label>
+                <label class="source-option">
+                  <input type="radio" name="participant_source" value="file" {{ old('participant_source') === 'file' ? 'checked' : '' }} id="sourceFile">
+                  <span class="source-option-label">
+                    <span class="source-option-title">Upload CSV/XLSX</span>
+                    <span class="source-option-desc">Upload an exported participant list file</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {{-- Intake Link Selection --}}
+            <div class="row" id="intakeLinkSection" style="{{ old('participant_source', 'intake_link') === 'file' ? 'display:none;' : '' }}">
+              <label>Select Intake Event Link</label>
+              <select name="intake_event_id" id="intakeEventSelect">
+                <option value="">-- Select an intake event --</option>
+                @foreach ($intakeEvents as $event)
+                  <option value="{{ $event->id }}" {{ old('intake_event_id') == $event->id ? 'selected' : '' }}>
+                    {{ $event->event_name }} {{ $event->is_active ? '(Active)' : '(Inactive)' }}
+                  </option>
+                @endforeach
+              </select>
+              <div id="intakeParticipantsPreview" style="margin-top:12px;display:none;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span class="intake-preview-badge" id="intakeParticipantCount"></span>
+                  <button type="button" class="btn-sm" id="intakeRefreshBtn" title="Refresh participants">Refresh</button>
+                </div>
+                <div class="intake-participants-table-wrap">
+                  <table class="intake-participants-table" id="intakeParticipantsTable">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Gender</th>
+                        <th>Region</th>
+                        <th>Province</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+              <div id="intakeNoParticipants" style="display:none;margin-top:8px;" class="upload-guidance muted">
+                No pending participants found for this intake event. Participants need to fill up the link first.
+              </div>
+              <div id="intakeLoadingIndicator" style="display:none;margin-top:8px;" class="upload-guidance muted">
+                Loading participants...
+              </div>
+            </div>
+
+            {{-- File Upload (secondary option) --}}
+            <div class="row" id="fileUploadSection" style="{{ old('participant_source', 'intake_link') !== 'file' ? 'display:none;' : '' }}">
               <label>Import Participants (CSV/XLSX)</label>
               <div class="upload-shell">
                 <label class="upload-surface" for="participantsFile">
@@ -1578,15 +1738,13 @@
                   </span>
                   <span class="upload-surface-button">Choose File</span>
                 </label>
-                <input class="file-input-hidden" type="file" id="participantsFile" name="participants_file" accept=".csv,.xlsx" required>
+                <input class="file-input-hidden" type="file" id="participantsFile" name="participants_file" accept=".csv,.xlsx">
                 <div class="upload-meta">
                   <span id="participantsFileName" class="upload-file-name">No file selected</span>
                   <span>CSV and XLSX supported</span>
                 </div>
               </div>
               <div class="upload-guidance muted">
-                Please do Participant Intake first and export csv or xlsx file, then upload here.
-                <br>
                 Headers supported:
                 <code>participant_name</code> <code>participant name</code> <code>name</code>
                 or split name fields
@@ -1728,6 +1886,7 @@
     </div>
   </div>
   <script>
+    (() => {
     const activityTypeSelect = document.getElementById('activityTypeSelect');
     const activityTypeOtherRow = document.getElementById('activityTypeOtherRow');
     const activityTypeOtherInput = document.getElementById('activityTypeOtherInput');
@@ -1760,7 +1919,6 @@
     const setupOfficeProvinces = @json($setupOfficeProvinces ?? []);
     const sscpProgramLabel = @json($sscpProgramLabel ?? null);
     const sourceOfFundsOptions = @json($sourceOfFundsOptions ?? []);
-    const customDostProjectOptionLabel = @json($customDostProjectOptionLabel ?? 'Others, please specify');
     const customDostProjectOptionValue = 'Others';
     let persistedDostProjectValue = @json(old('dost_project', ''));
     const notApplicableValue = 'Not Applicable';
@@ -1781,13 +1939,6 @@
         code: notApplicableValue,
         programPrefix: '',
       };
-    const customDostProjectOption = {
-      value: customDostProjectOptionValue,
-      label: customDostProjectOptionLabel,
-      code: '',
-      programPrefix: 'SSCP',
-    };
-
     const toggleActivityTypeOther = () => {
       if (!activityTypeSelect || !activityTypeOtherRow || !activityTypeOtherInput) {
         return;
@@ -1914,9 +2065,7 @@
         return;
       }
 
-      const isCustomProject = dostProgramSelect
-        && dostProgramSelect.value === sscpProgramLabel
-        && dostProjectSelect.value === customDostProjectOptionValue;
+      const isCustomProject = dostProjectSelect.value === customDostProjectOptionValue;
 
       dostProjectOtherRow.style.display = isCustomProject ? '' : 'none';
       dostProjectOtherInput.required = isCustomProject;
@@ -1963,6 +2112,8 @@
       }
 
       dostProjectSelect.innerHTML = '';
+      dostProjectSelect.style.pointerEvents = lockSelection ? 'none' : '';
+      dostProjectSelect.style.opacity = lockSelection ? '0.7' : '';
 
       let placeholderOption = null;
       if (!lockSelection) {
@@ -1991,12 +2142,14 @@
 
       if (lockSelection && availableOptions[0]) {
         dostProjectSelect.value = availableOptions[0].value;
+        toggleDostProjectOther();
         return;
       }
 
       if (!availableOptions.some((option) => option.value === previousValue)) {
         dostProjectSelect.value = '';
       }
+      toggleDostProjectOther();
     };
 
     const buildSourceOfFundsOptions = (availableOptions, previousValue, lockSelection = false) => {
@@ -2005,6 +2158,8 @@
       }
 
       sourceOfFundsSelect.innerHTML = '';
+      sourceOfFundsSelect.style.pointerEvents = lockSelection ? 'none' : '';
+      sourceOfFundsSelect.style.opacity = lockSelection ? '0.7' : '';
 
       let placeholderOption = null;
       if (!lockSelection) {
@@ -2101,21 +2256,19 @@
       const requiredPrefix = dostProgramProjectPrefixes[selectedProgram] || '';
       const matchingOptions = requiredPrefix === ''
         ? []
-        : allDostProjectOptions.filter((option) => option.programPrefix === requiredPrefix);
+        : allDostProjectOptions.filter((option) => option.programPrefix === requiredPrefix || option.programPrefix === '__ALL__');
       const availableOptions = matchingOptions.length > 0
         ? matchingOptions
         : allDostProjectOptions;
-      const availableProjectOptions = isSscp
-        ? [...availableOptions, customDostProjectOption]
-        : availableOptions;
 
-      buildDostProjectOptions(availableProjectOptions, 'Select DOST Project', previousValue);
+      buildDostProjectOptions(availableOptions, 'Select DOST Project', previousValue);
 
       syncProjectCode();
     };
 
     if (dostProjectSelect) {
       dostProjectSelect.addEventListener('change', syncProjectCode);
+      dostProjectSelect.addEventListener('change', toggleDostProjectOther);
     }
 
     if (dostProgramSelect) {
@@ -2918,8 +3071,116 @@
         });
       })();
 
+      // --- Participant Source Toggle ---
+      const sourceIntakeLink = document.getElementById('sourceIntakeLink');
+      const sourceFile = document.getElementById('sourceFile');
+      const intakeLinkSection = document.getElementById('intakeLinkSection');
+      const fileUploadSection = document.getElementById('fileUploadSection');
+      const intakeEventSelect = document.getElementById('intakeEventSelect');
+      const intakeParticipantsPreview = document.getElementById('intakeParticipantsPreview');
+      const intakeNoParticipants = document.getElementById('intakeNoParticipants');
+      const intakeLoadingIndicator = document.getElementById('intakeLoadingIndicator');
+      const intakeParticipantCount = document.getElementById('intakeParticipantCount');
+      const intakeParticipantsTable = document.getElementById('intakeParticipantsTable');
+      const intakeRefreshBtn = document.getElementById('intakeRefreshBtn');
+      const intakeParticipantsUrl = @json(url('/admin/certificates/intake-event'));
+
+      function toggleParticipantSource() {
+        const isIntake = sourceIntakeLink && sourceIntakeLink.checked;
+        if (intakeLinkSection) intakeLinkSection.style.display = isIntake ? '' : 'none';
+        if (fileUploadSection) fileUploadSection.style.display = isIntake ? 'none' : '';
+        if (participantsFileInput) {
+          participantsFileInput.required = !isIntake;
+          if (isIntake) participantsFileInput.value = '';
+        }
+      }
+
+      if (sourceIntakeLink) sourceIntakeLink.addEventListener('change', toggleParticipantSource);
+      if (sourceFile) sourceFile.addEventListener('change', toggleParticipantSource);
+      toggleParticipantSource();
+
+      function loadIntakeParticipants(eventId) {
+        if (!eventId) {
+          if (intakeParticipantsPreview) intakeParticipantsPreview.style.display = 'none';
+          if (intakeNoParticipants) intakeNoParticipants.style.display = 'none';
+          return;
+        }
+
+        if (intakeLoadingIndicator) intakeLoadingIndicator.style.display = '';
+        if (intakeParticipantsPreview) intakeParticipantsPreview.style.display = 'none';
+        if (intakeNoParticipants) intakeNoParticipants.style.display = 'none';
+
+        fetch(`${intakeParticipantsUrl}/${eventId}/participants`, {
+          headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (intakeLoadingIndicator) intakeLoadingIndicator.style.display = 'none';
+
+          if (!data.participants || data.participants.length === 0) {
+            if (intakeNoParticipants) intakeNoParticipants.style.display = '';
+            if (intakeParticipantsPreview) intakeParticipantsPreview.style.display = 'none';
+            return;
+          }
+
+          if (intakeParticipantCount) {
+            intakeParticipantCount.textContent = `${data.count} pending participant${data.count !== 1 ? 's' : ''}`;
+          }
+
+          const tbody = intakeParticipantsTable ? intakeParticipantsTable.querySelector('tbody') : null;
+          if (tbody) {
+            tbody.innerHTML = '';
+            data.participants.forEach((p, i) => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td>${i + 1}</td>
+                <td>${escapeHtml(p.participant_name || '')}</td>
+                <td>${escapeHtml(p.email || '-')}</td>
+                <td>${escapeHtml(p.gender || '-')}</td>
+                <td>${escapeHtml(p.region || '-')}</td>
+                <td>${escapeHtml(p.province || '-')}</td>
+              `;
+              tbody.appendChild(tr);
+            });
+          }
+
+          if (intakeParticipantsPreview) intakeParticipantsPreview.style.display = '';
+        })
+        .catch(() => {
+          if (intakeLoadingIndicator) intakeLoadingIndicator.style.display = 'none';
+          if (intakeNoParticipants) {
+            intakeNoParticipants.textContent = 'Failed to load participants. Please try again.';
+            intakeNoParticipants.style.display = '';
+          }
+        });
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      if (intakeEventSelect) {
+        intakeEventSelect.addEventListener('change', () => {
+          loadIntakeParticipants(intakeEventSelect.value);
+        });
+        if (intakeEventSelect.value) {
+          loadIntakeParticipants(intakeEventSelect.value);
+        }
+      }
+
+      if (intakeRefreshBtn) {
+        intakeRefreshBtn.addEventListener('click', () => {
+          if (intakeEventSelect && intakeEventSelect.value) {
+            loadIntakeParticipants(intakeEventSelect.value);
+          }
+        });
+      }
+
       window.addEventListener('beforeunload', revokeCurrentPreviewBlob);
     });
+    })();
   </script>
 </body>
 </html>

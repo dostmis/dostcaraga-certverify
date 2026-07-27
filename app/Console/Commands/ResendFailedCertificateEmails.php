@@ -155,11 +155,37 @@ class ResendFailedCertificateEmails extends Command
             $transport = Transport::fromDsn($dsn);
             $transport->start();
         } catch (\Throwable $e) {
-            $this->error('SMTP authentication failed — not queuing anything.');
-            $this->line('  ' . mb_substr($e->getMessage(), 0, 200));
+            $message = $e->getMessage();
+
+            // Gmail returns 454 when too many logins happen in a short window.
+            // That is a temporary throttle, NOT a credentials problem, and
+            // retrying makes it worse — so give very different advice.
+            if (str_contains($message, '454')) {
+                $this->error('SMTP is temporarily rate-limited (454) — not queuing anything.');
+                $this->newLine();
+                $this->line('Your mail password is fine. Gmail is throttling logins because too many');
+                $this->line('were attempted in a short window. Do NOT keep retrying: each attempt can');
+                $this->line('extend the block. Wait (typically 1-24 hours) and run this again.');
+                $this->newLine();
+                $this->line('To avoid recurrence, send smaller batches (--limit) or move to a');
+                $this->line('transactional mail provider instead of Gmail SMTP.');
+
+                return false;
+            }
+
+            if (str_contains($message, '535')) {
+                $this->error('SMTP credentials were rejected (535) — not queuing anything.');
+                $this->newLine();
+                $this->line('Fix MAIL_PASSWORD in .env (Gmail requires an App Password:');
+                $this->line('https://myaccount.google.com/apppasswords), run `php artisan config:clear`,');
+                $this->line('then run this command again.');
+
+                return false;
+            }
+
+            $this->error('SMTP connection failed — not queuing anything.');
+            $this->line('  ' . mb_substr($message, 0, 200));
             $this->newLine();
-            $this->line('Fix MAIL_PASSWORD in .env (Gmail requires an App Password:');
-            $this->line('https://myaccount.google.com/apppasswords), then run this command again.');
             $this->line('Use --skip-smtp-check to override this guard.');
 
             return false;

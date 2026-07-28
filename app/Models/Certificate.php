@@ -13,6 +13,12 @@ class Certificate extends Model
     public const EMAIL_STATUS_SKIPPED_NO_EMAIL = 'skipped_no_email';
     public const EMAIL_STATUS_SKIPPED_INVALID_EMAIL = 'skipped_invalid_email';
 
+    /**
+     * Deliberately withheld by an administrator - e.g. the address on file
+     * belongs to someone other than the participant. Never auto-resent.
+     */
+    public const EMAIL_STATUS_HELD = 'held';
+
     public const BLOCKCHAIN_STATUS_PENDING = 'pending';
     public const BLOCKCHAIN_STATUS_ANCHORED = 'anchored';
     public const BLOCKCHAIN_STATUS_FAILED = 'failed';

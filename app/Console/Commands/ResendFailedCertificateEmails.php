@@ -41,7 +41,13 @@ class ResendFailedCertificateEmails extends Command
             ->whereNotNull('email')
             ->where('email', '<>', '')
             ->whereNotNull('stamped_pdf_path')
-            ->where('stamped_pdf_path', '<>', '');
+            ->where('stamped_pdf_path', '<>', '')
+            // Never resend certificates an administrator has deliberately held
+            // back (e.g. the address on file is not the participant's).
+            ->where(function ($q) {
+                $q->whereNull('email_delivery_status')
+                    ->orWhere('email_delivery_status', '<>', Certificate::EMAIL_STATUS_HELD);
+            });
 
         if (! $this->option('include-never-queued')) {
             $query->whereNotNull('email_delivery_status');

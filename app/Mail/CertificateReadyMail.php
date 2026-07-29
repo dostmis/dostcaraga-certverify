@@ -6,7 +6,6 @@ use App\Models\Certificate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Storage;
 
 class CertificateReadyMail extends Mailable
 {
@@ -32,7 +31,10 @@ class CertificateReadyMail extends Mailable
             }
         }
 
-        $mail = $this->subject($this->subjectLine())
+        // The certificate PDF is deliberately NOT attached. Bulk identical
+        // attachments are a strong spam signal and were getting messages
+        // blocked; the recipient downloads it from the tokenised link instead.
+        return $this->subject($this->subjectLine())
             ->view('emails.certificates.ready', [
                 'certificate' => $this->certificate,
                 'downloadUrl' => $this->downloadUrl(),
@@ -41,16 +43,6 @@ class CertificateReadyMail extends Mailable
                 'claimUrl' => $claimUrl,
                 'isDormant' => $isDormant,
             ]);
-
-        $attachment = $this->certificateAttachmentPath();
-        if ($attachment) {
-            $mail->attach($attachment, [
-                'as' => $this->certificate->certificate_code . '.pdf',
-                'mime' => 'application/pdf',
-            ]);
-        }
-
-        return $mail;
     }
 
     private function subjectLine(): string
@@ -99,25 +91,5 @@ class CertificateReadyMail extends Mailable
         }
 
         return "{$from} to {$to}";
-    }
-
-    private function certificateAttachmentPath(): ?string
-    {
-        $path = (string) ($this->certificate->stamped_pdf_path ?? '');
-        if ($path === '') {
-            return null;
-        }
-
-        $localDisk = Storage::disk('local');
-        if ($localDisk->exists($path)) {
-            return $localDisk->path($path);
-        }
-
-        $publicDisk = Storage::disk('public');
-        if ($publicDisk->exists($path)) {
-            return $publicDisk->path($path);
-        }
-
-        return null;
     }
 }

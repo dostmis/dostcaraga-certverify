@@ -34,7 +34,7 @@
                     @if ($certificate->venue)
                         at {{ $certificate->venue }}
                     @endif
-                    is now available. A PDF copy is attached to this email.
+                    is now available. Use the <strong>Download PDF</strong> button below to save your copy.
                 </p>
             </td>
         </tr>

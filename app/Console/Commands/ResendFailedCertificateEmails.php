@@ -23,7 +23,9 @@ class ResendFailedCertificateEmails extends Command
         {--limit=400 : Maximum emails to queue in this batch}
         {--dry-run : List what would be queued without queuing anything}
         {--skip-smtp-check : Queue without verifying SMTP credentials first}
-        {--include-never-queued : Also include certificates that were never queued at all}';
+        {--include-never-queued : Also include certificates that were never queued at all}
+        {--redeliver-sent-since= : Also re-send certificates already marked sent on/after this date (YYYY-MM-DD). Use to recover from a period when the mail provider accepted messages but then blocked them.}
+        {--only-email= : Restrict the batch to a single recipient address (useful for targeted recovery)}';
 
     protected $description = 'Requeue certificate emails that were never delivered, in batches that respect the daily sending limit';
 
@@ -36,8 +38,21 @@ class ResendFailedCertificateEmails extends Command
             return self::FAILURE;
         }
 
+        $redeliverSince = $this->option('redeliver-sent-since');
+        $onlyEmail = trim((string) $this->option('only-email'));
+
         $query = Certificate::query()
-            ->whereNull('email_sent_at')
+            ->where(function ($q) use ($redeliverSince) {
+                $q->whereNull('email_sent_at');
+
+                // Recovery path: a provider can accept a message and then block
+                // it, leaving the certificate marked sent although it never
+                // arrived. Allow those to be deliberately re-sent.
+                if ($redeliverSince) {
+                    $q->orWhere('email_sent_at', '>=', $redeliverSince);
+                }
+            })
+            ->when($onlyEmail !== '', fn ($q) => $q->where('email', 'ILIKE', $onlyEmail))
             ->whereNotNull('email')
             ->where('email', '<>', '')
             ->whereNotNull('stamped_pdf_path')

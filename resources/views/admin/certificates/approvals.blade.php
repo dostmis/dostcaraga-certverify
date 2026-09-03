@@ -723,6 +723,9 @@
                   <a class="rda-action rda-action-secondary" target="_blank" rel="noopener" href="{{ route('admin.certs.endorsements.preview', ['id' => $endorsement->id]) }}">
                     Preview PDF
                   </a>
+                  <a class="rda-action rda-action-secondary" target="_blank" rel="noopener" href="{{ route('admin.certs.endorsements.preview', ['id' => $endorsement->id, 'all' => 1]) }}">
+                    Preview All Participants
+                  </a>
                 @endif
 
                 <form method="POST" action="{{ route('admin.certs.endorsements.approve', ['id' => $endorsement->id]) }}" onsubmit="return confirm('Are you sure you want to approve this certificate package and generate the certificates?')">

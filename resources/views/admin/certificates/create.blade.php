@@ -759,6 +759,215 @@
       box-shadow: 0 8px 18px rgba(13, 79, 140, 0.18);
     }
 
+    .layout-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+      background: linear-gradient(180deg, #f9fcff 0%, #eef5fb 100%);
+      border: 1px solid #d9e7f4;
+      border-radius: 13px;
+    }
+
+    .layout-line {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .layout-line + .layout-line {
+      padding-top: 10px;
+      border-top: 1px solid #dbe8f5;
+    }
+
+    .layout-line-label {
+      flex: 0 0 120px;
+    }
+
+    .layout-group-buttons {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .layout-group-checks {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .layout-nudge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-left: 6px;
+      margin-left: auto;
+    }
+
+    .layout-margins {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-left: 6px;
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+
+    .layout-margin-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 34px;
+      padding: 0 8px;
+      background: #ffffff;
+      border: 1px solid #d7e2ec;
+      border-radius: 8px;
+    }
+
+    .layout-margin-field label {
+      font-size: 11.5px;
+      color: #60748a;
+      margin: 0;
+    }
+
+    .layout-nudge-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 34px;
+      padding: 0 8px 0 4px;
+      background: #ffffff;
+      border: 1px solid #c7d7e7;
+      border-radius: 9px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .layout-nudge-field:focus-within {
+      border-color: #67a2d1;
+      box-shadow: 0 0 0 4px rgba(13, 79, 140, 0.12);
+    }
+
+    .layout-nudge-input {
+      width: 52px;
+      border: none;
+      outline: none;
+      background: transparent;
+      padding: 0 2px;
+      text-align: right;
+      font-size: 13px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: #0d4f8c;
+      /* Native spinners duplicate the ◀/▶ buttons, so hide them. */
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+
+    .layout-nudge-input::-webkit-outer-spin-button,
+    .layout-nudge-input::-webkit-inner-spin-button {
+      appearance: none;
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    .layout-nudge-unit {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      color: #7c8ea3;
+      pointer-events: none;
+    }
+
+    .layout-reset {
+      height: 34px;
+      padding: 0 12px;
+      border: 1px solid #c7d7e7;
+      background: #ffffff;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      color: #52637a;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+
+    .layout-reset:hover {
+      background: #f4f8fc;
+      border-color: #94aecd;
+      color: #0d4f8c;
+    }
+
+    .layout-reset:focus-visible {
+      outline: none;
+      border-color: #67a2d1;
+      box-shadow: 0 0 0 4px rgba(13, 79, 140, 0.12);
+    }
+
+    .layout-btn {
+      min-width: 34px;
+      height: 34px;
+      border: 1px solid #c7d7e7;
+      background: #ffffff;
+      border-radius: 9px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #37506b;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+      box-shadow: 0 1px 1px rgba(15, 23, 42, 0.04);
+    }
+
+    .layout-btn:hover {
+      background: #f4f8fc;
+      border-color: #94aecd;
+      transform: translateY(-1px);
+    }
+
+    .layout-btn:focus-visible {
+      outline: none;
+      border-color: #67a2d1;
+      box-shadow: 0 0 0 4px rgba(13, 79, 140, 0.12);
+    }
+
+    .layout-btn.active {
+      background: linear-gradient(180deg, #185c9b 0%, #0d4f8c 100%);
+      color: #ffffff;
+      border-color: #0d4f8c;
+      box-shadow: 0 8px 18px rgba(13, 79, 140, 0.18);
+    }
+
+    .layout-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: #37506b;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .layout-check input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: #0d4f8c;
+      cursor: pointer;
+    }
+
+    .layout-hint {
+      margin: 8px 0 0;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
     .caption-editor-surface {
       width: 100%;
       min-height: 148px;
@@ -804,6 +1013,39 @@
       color: #60748a;
       font-size: 12.5px;
       line-height: 1.45;
+    }
+
+    /* ---- Caption fit meter ---- */
+    .caption-fit {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .caption-fit-count {
+      font-variant-numeric: tabular-nums;
+      color: #60748a;
+      white-space: nowrap;
+    }
+
+    .caption-fit-note {
+      color: #60748a;
+    }
+
+    .caption-fit.is-tight .caption-fit-count,
+    .caption-fit.is-tight .caption-fit-note {
+      color: #9a6207;
+      font-weight: 600;
+    }
+
+    .caption-fit.is-over .caption-fit-count,
+    .caption-fit.is-over .caption-fit-note {
+      color: #b3261e;
+      font-weight: 700;
     }
 
     /* ---- AI Caption Assistant ---- */
@@ -1788,6 +2030,149 @@
             <div id="livePreviewStatus" class="preview-status" hidden></div>
 
             <div class="row">
+              <label>Certificate Layout</label>
+              <div class="layout-panel">
+                <div class="layout-line">
+                  <span class="caption-toolbar-label layout-line-label">Participant Name</span>
+                  <div class="layout-group-buttons" role="group" aria-label="Participant name alignment">
+                    <button type="button" class="layout-btn" data-name-align="left" title="Align participant name left" aria-label="Align participant name left" aria-pressed="false">←</button>
+                    <button type="button" class="layout-btn" data-name-align="center" title="Center participant name" aria-label="Center participant name" aria-pressed="false">↔</button>
+                    <button type="button" class="layout-btn" data-name-align="right" title="Align participant name right" aria-label="Align participant name right" aria-pressed="false">→</button>
+                  </div>
+                  <div class="layout-nudge" role="group" aria-label="Nudge participant name horizontally">
+                    <button type="button" class="layout-btn" data-nudge="name" data-nudge-step="-1" title="Move participant name 1px left" aria-label="Move participant name 1 pixel left">◀</button>
+                    <span class="layout-nudge-field">
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="nameOffsetXInput"
+                        name="name_offset_x"
+                        value="{{ old('name_offset_x', 0) }}"
+                        min="-{{ $layoutOffsetLimitPx }}"
+                        max="{{ $layoutOffsetLimitPx }}"
+                        step="1"
+                        inputmode="numeric"
+                        data-nudge-input="name"
+                        aria-label="Participant name horizontal offset in pixels">
+                      <span class="layout-nudge-unit" aria-hidden="true">px</span>
+                    </span>
+                    <button type="button" class="layout-btn" data-nudge="name" data-nudge-step="1" title="Move participant name 1px right" aria-label="Move participant name 1 pixel right">▶</button>
+                    <button type="button" class="layout-reset" data-nudge-reset="name" title="Reset participant name nudge">Reset</button>
+                  </div>
+                  <div class="layout-nudge" role="group" aria-label="Nudge participant name vertically">
+                    <button type="button" class="layout-btn" data-nudge="nameY" data-nudge-step="-1" title="Move participant name 1px up" aria-label="Move participant name 1 pixel up">▲</button>
+                    <span class="layout-nudge-field">
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="nameOffsetYInput"
+                        name="name_offset_y"
+                        value="{{ old('name_offset_y', 0) }}"
+                        min="-{{ $layoutOffsetLimitPx }}"
+                        max="{{ $layoutOffsetLimitPx }}"
+                        step="1"
+                        inputmode="numeric"
+                        data-nudge-input="nameY"
+                        aria-label="Participant name vertical offset in pixels">
+                      <span class="layout-nudge-unit" aria-hidden="true">px</span>
+                    </span>
+                    <button type="button" class="layout-btn" data-nudge="nameY" data-nudge-step="1" title="Move participant name 1px down" aria-label="Move participant name 1 pixel down">▼</button>
+                    <button type="button" class="layout-reset" data-nudge-reset="nameY" title="Reset participant name vertical nudge">Reset</button>
+                  </div>
+                </div>
+
+                <div class="layout-line">
+                  <span class="caption-toolbar-label layout-line-label">Text Area</span>
+                  <div class="layout-margins" role="group" aria-label="Usable text area side margins">
+                    <span class="layout-margin-field">
+                      <label for="nameMarginLeftInput">Left</label>
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="nameMarginLeftInput"
+                        name="name_margin_left"
+                        value="{{ old('name_margin_left', $defaultNameMarginMm) }}"
+                        min="0"
+                        max="{{ $nameMarginLimitMm }}"
+                        step="1"
+                        inputmode="numeric"
+                        aria-label="Left margin of the usable text area in millimetres">
+                      <span class="layout-nudge-unit" aria-hidden="true">mm</span>
+                    </span>
+                    <span class="layout-margin-field">
+                      <label for="nameMarginRightInput">Right</label>
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="nameMarginRightInput"
+                        name="name_margin_right"
+                        value="{{ old('name_margin_right', $defaultNameMarginMm) }}"
+                        min="0"
+                        max="{{ $nameMarginLimitMm }}"
+                        step="1"
+                        inputmode="numeric"
+                        aria-label="Right margin of the usable text area in millimetres">
+                      <span class="layout-nudge-unit" aria-hidden="true">mm</span>
+                    </span>
+                    <button type="button" class="layout-reset" id="nameMarginReset" title="Reset the text area to equal margins">Reset</button>
+                  </div>
+                </div>
+
+                <div class="layout-line">
+                  <span class="caption-toolbar-label layout-line-label">Signature</span>
+                  <div class="layout-nudge" role="group" aria-label="Nudge Regional Director signature horizontally">
+                    <button type="button" class="layout-btn" data-nudge="signature" data-nudge-step="-1" title="Move signature 1px left" aria-label="Move signature 1 pixel left">◀</button>
+                    <span class="layout-nudge-field">
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="signatureOffsetXInput"
+                        name="signature_offset_x"
+                        value="{{ old('signature_offset_x', 0) }}"
+                        min="-{{ $layoutOffsetLimitPx }}"
+                        max="{{ $layoutOffsetLimitPx }}"
+                        step="1"
+                        inputmode="numeric"
+                        data-nudge-input="signature"
+                        aria-label="Signature horizontal offset in pixels">
+                      <span class="layout-nudge-unit" aria-hidden="true">px</span>
+                    </span>
+                    <button type="button" class="layout-btn" data-nudge="signature" data-nudge-step="1" title="Move signature 1px right" aria-label="Move signature 1 pixel right">▶</button>
+                    <button type="button" class="layout-reset" data-nudge-reset="signature" title="Reset signature nudge">Reset</button>
+                  </div>
+                </div>
+
+                <div class="layout-line">
+                  <span class="caption-toolbar-label layout-line-label">QR Code</span>
+                  <div class="layout-group-checks">
+                    <input type="hidden" name="qr_show_code" value="0">
+                    <label class="layout-check">
+                      <input type="checkbox" id="qrShowCodeInput" name="qr_show_code" value="1" @checked(old('qr_show_code', '1'))>
+                      <span>Certificate code</span>
+                    </label>
+                    <input type="hidden" name="qr_show_link" value="0">
+                    <label class="layout-check">
+                      <input type="checkbox" id="qrShowLinkInput" name="qr_show_link" value="1" @checked(old('qr_show_link', '1'))>
+                      <span>Verification link</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <p class="layout-hint muted">
+                <strong>Text Area</strong> sets how much of the page width the name and caption may use, measured in from each edge.
+                Leave both at {{ $defaultNameMarginMm }}mm for the standard templates. If your design has artwork down one side,
+                raise that side&rsquo;s margin until the preview shows the name clear of the artwork &mdash; the name then centres
+                on the remaining space instead of on the page.
+              </p>
+              <p class="layout-hint muted">
+                Each ◀ / ▶ click shifts the element by one pixel (1&frasl;96 inch) on top of the chosen alignment, or type an exact offset into the px field.
+                Negative values move left, positive values move right, from &minus;{{ $layoutOffsetLimitPx }} to {{ $layoutOffsetLimitPx }}.
+                Clear both QR options to print the QR code on its own, with no code or link text beneath it &mdash; the QR code itself always stays on the certificate so it remains verifiable.
+              </p>
+              <input type="hidden" id="nameAlignmentInput" name="name_alignment" value="{{ old('name_alignment', 'center') }}">
+            </div>
+
+            <div class="row">
               <label>Certificate Caption (appears below name)</label>
               <div class="caption-editor">
                 <div class="caption-toolbar">
@@ -1853,6 +2238,10 @@
                   aria-multiline="true"
                   data-placeholder="Write the certificate caption exactly as it should appear beneath the participant name."></div>
                 <textarea id="captionTextInput" name="caption_text" rows="5" class="caption-source-input">{{ old('caption_text') }}</textarea>
+                <div class="caption-fit" id="captionFit">
+                  <span class="caption-fit-count" id="captionFitCount">0 characters</span>
+                  <span class="caption-fit-note" id="captionFitNote" role="status" aria-live="polite"></span>
+                </div>
               </div>
               <input type="hidden" id="captionAlignmentInput" name="caption_alignment" value="{{ old('caption_alignment', 'center') }}">
                 <br>
@@ -1879,6 +2268,10 @@
         <div class="actions">
           <button class="btn btn-ghost" type="submit" formaction="{{ route('admin.certs.preview') }}" formtarget="_blank">
             Preview First Participant
+          </button>
+          <button class="btn btn-ghost" type="submit" formaction="{{ route('admin.certs.preview-all') }}" formtarget="_blank"
+                  title="Renders up to the first 25 participants. A larger batch is trimmed so the preview stays quick to open; the filename shows how many of the total you are seeing.">
+            Preview Participants
           </button>
           <button class="btn btn-main" type="submit">{{ $submitLabel }}</button>
         </div>
@@ -2516,6 +2909,18 @@
           setPreviewIdleVisible(false);
           setPreviewLoading(false);
           setPreviewStatus('');
+          // The renderer measured the real text, so its verdict replaces the
+          // character-count estimate shown while typing.
+          applyCaptionFitFromPreview(response.headers);
+
+          if (response.headers.get('X-Signature-Expected') === '1'
+            && response.headers.get('X-Signature-Stamped') === '0') {
+            setPreviewStatus(
+              'The Regional Director e-signature is enabled but its image file could not be found, '
+                + 'so it is missing from this preview.',
+              true
+            );
+          }
         } catch (error) {
           if (error.name === 'AbortError') {
             return;
@@ -2663,6 +3068,104 @@
         captionEditor.classList.toggle('is-empty', getCaptionEditorText() === '');
       };
 
+      // ---- Caption fit meter -------------------------------------------------
+      // Character counts are a fast local estimate; the authoritative answer
+      // comes back from the renderer with each live preview (it actually wraps
+      // and measures the text), so a server verdict always wins.
+      const CAPTION_TIGHT_CHARS = 800;   // below this the caption still prints ~10pt or larger
+      const CAPTION_LIMIT_CHARS = 1400;  // measured capacity of the band above the signature
+      const captionFit = document.getElementById('captionFit');
+      const captionFitCount = document.getElementById('captionFitCount');
+      const captionFitNote = document.getElementById('captionFitNote');
+      let captionServerVerdict = null;
+
+      const setCaptionFitState = (state, note) => {
+        if (!captionFit) {
+          return;
+        }
+        captionFit.classList.toggle('is-tight', state === 'tight');
+        captionFit.classList.toggle('is-over', state === 'over');
+        if (captionFitNote) {
+          captionFitNote.textContent = note || '';
+        }
+      };
+
+      const updateCaptionFitMeter = () => {
+        if (!captionFit || !captionFitCount) {
+          return;
+        }
+
+        const length = getCaptionEditorText().trim().length;
+        captionFitCount.textContent = `${length.toLocaleString()} character${length === 1 ? '' : 's'}`;
+
+        // A server verdict describes the caption as it was last rendered; keep
+        // showing it until the text changes enough to make it stale.
+        if (captionServerVerdict && captionServerVerdict.length === length) {
+          setCaptionFitState(captionServerVerdict.state, captionServerVerdict.note);
+          return;
+        }
+
+        if (length === 0) {
+          setCaptionFitState('ok', '');
+          return;
+        }
+
+        if (length > CAPTION_LIMIT_CHARS) {
+          setCaptionFitState(
+            'over',
+            `Too long for this certificate — about ${(length - CAPTION_LIMIT_CHARS).toLocaleString()} characters over. `
+              + 'It will print at the smallest size and run into the signature area.'
+          );
+          return;
+        }
+
+        if (length > CAPTION_TIGHT_CHARS) {
+          setCaptionFitState('tight', 'Getting long — this will print in small type. Check the preview.');
+          return;
+        }
+
+        setCaptionFitState('ok', '');
+      };
+
+      // Called with the headers the renderer returns alongside each live preview.
+      const applyCaptionFitFromPreview = (headers) => {
+        if (!captionFit) {
+          return;
+        }
+
+        const length = getCaptionEditorText().trim().length;
+        if (length === 0) {
+          captionServerVerdict = null;
+          updateCaptionFitMeter();
+          return;
+        }
+
+        const overflows = headers.get('X-Caption-Overflow') === '1';
+        const fontSize = parseFloat(headers.get('X-Caption-Font-Size') || '0');
+        const lines = parseInt(headers.get('X-Caption-Lines') || '0', 10);
+        const maxLines = parseInt(headers.get('X-Caption-Max-Lines') || '0', 10);
+
+        if (overflows) {
+          const over = Math.max(1, lines - maxLines);
+          captionServerVerdict = {
+            length,
+            state: 'over',
+            note: `Does not fit — ${lines} lines of text but only room for ${maxLines}. `
+              + `Remove roughly ${over} line${over === 1 ? '' : 's'} or it will print over the signature.`,
+          };
+        } else if (fontSize > 0 && fontSize < 10) {
+          captionServerVerdict = {
+            length,
+            state: 'tight',
+            note: `Fits, but only at ${fontSize}pt — small on a printed certificate.`,
+          };
+        } else {
+          captionServerVerdict = { length, state: 'ok', note: '' };
+        }
+
+        updateCaptionFitMeter();
+      };
+
       const syncCaptionInputFromEditor = () => {
         if (!captionEditor || !captionInput) {
           return;
@@ -2672,6 +3175,7 @@
         const decodedMarkup = decodeHtmlEntities(sanitizedMarkup);
         captionInput.value = getCaptionEditorText() === '' ? '' : decodedMarkup;
         updateCaptionPlaceholderState();
+        updateCaptionFitMeter();
       };
 
       const restoreCaptionEditorFromInput = () => {
@@ -2880,6 +3384,149 @@
       }
 
       syncCaptionToolbarState();
+
+      // ---- Participant name alignment ----
+      // The buttons drive a hidden input (like the caption toolbar) because the
+      // PDF is rendered server-side from the posted form values.
+      const nameAlignInput = document.getElementById('nameAlignmentInput');
+      const nameAlignButtons = document.querySelectorAll('[data-name-align]');
+
+      const syncNameAlignmentButtons = () => {
+        const activeAlignment = nameAlignInput?.value || 'center';
+        nameAlignButtons.forEach((button) => {
+          const isActive = button.dataset.nameAlign === activeAlignment;
+          button.classList.toggle('active', isActive);
+          button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+      };
+
+      nameAlignButtons.forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          const nextAlignment = button.dataset.nameAlign || 'center';
+          if (!nameAlignInput || nameAlignInput.value === nextAlignment) {
+            return;
+          }
+          nameAlignInput.value = nextAlignment;
+          syncNameAlignmentButtons();
+          scheduleLivePreview();
+        });
+      });
+
+      syncNameAlignmentButtons();
+
+      // ---- Participant name / signature nudge ----
+      // Offsets are whole CSS pixels; the server converts them to mm when it
+      // stamps the PDF, so this must stay in the same unit and stay clamped.
+      const nudgeLimitPx = {{ (int) $layoutOffsetLimitPx }};
+      const nudgeInputs = new Map(
+        Array.from(document.querySelectorAll('[data-nudge-input]'))
+          .map((input) => [input.dataset.nudgeInput, input])
+      );
+
+      const readNudge = (target) => {
+        const parsed = Number.parseInt(nudgeInputs.get(target)?.value ?? '0', 10);
+        return Number.isNaN(parsed) ? 0 : parsed;
+      };
+
+      const clampNudge = (value) => Math.max(-nudgeLimitPx, Math.min(nudgeLimitPx, value));
+
+      // Programmatic value changes do not fire `input`, so the preview refresh
+      // has to be requested explicitly here.
+      const applyNudge = (target, nextValue) => {
+        const input = nudgeInputs.get(target);
+        if (!input) {
+          return;
+        }
+        const clamped = clampNudge(nextValue);
+        if (String(clamped) === input.value) {
+          return;
+        }
+        input.value = String(clamped);
+        scheduleLivePreview();
+      };
+
+      document.querySelectorAll('[data-nudge]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          const target = button.dataset.nudge;
+          const step = Number.parseInt(button.dataset.nudgeStep || '0', 10);
+          if (!target || Number.isNaN(step)) {
+            return;
+          }
+          applyNudge(target, readNudge(target) + step);
+        });
+      });
+
+      document.querySelectorAll('[data-nudge-reset]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          applyNudge(button.dataset.nudgeReset, 0);
+        });
+      });
+
+      // ---- Text area margins ----
+      const nameMarginLeftInput = document.getElementById('nameMarginLeftInput');
+      const nameMarginRightInput = document.getElementById('nameMarginRightInput');
+      const nameMarginReset = document.getElementById('nameMarginReset');
+      const DEFAULT_NAME_MARGIN_MM = {{ $defaultNameMarginMm }};
+      const NAME_MARGIN_LIMIT_MM = {{ $nameMarginLimitMm }};
+
+      if (nameMarginReset) {
+        nameMarginReset.addEventListener('click', (event) => {
+          event.preventDefault();
+          if (nameMarginLeftInput) {
+            nameMarginLeftInput.value = String(DEFAULT_NAME_MARGIN_MM);
+          }
+          if (nameMarginRightInput) {
+            nameMarginRightInput.value = String(DEFAULT_NAME_MARGIN_MM);
+          }
+          scheduleLivePreview();
+        });
+      }
+
+      [nameMarginLeftInput, nameMarginRightInput].forEach((input) => {
+        if (!input) {
+          return;
+        }
+        // Settle a blank or out-of-range entry on commit so the value sent to
+        // the renderer is the one shown in the field.
+        input.addEventListener('change', () => {
+          const parsed = Number.parseInt(input.value, 10);
+          const normalized = Number.isFinite(parsed)
+            ? Math.max(0, Math.min(NAME_MARGIN_LIMIT_MM, parsed))
+            : DEFAULT_NAME_MARGIN_MM;
+          if (String(normalized) === input.value) {
+            return;
+          }
+          input.value = String(normalized);
+          scheduleLivePreview();
+        });
+      });
+
+      nudgeInputs.forEach((input, target) => {
+        // Typing already refreshes the preview through the form-level `input`
+        // listener; normalise on commit so a blank or out-of-range entry
+        // settles on a value the server will accept.
+        input.addEventListener('change', () => {
+          const normalized = String(clampNudge(readNudge(target)));
+          if (normalized === input.value) {
+            return;
+          }
+          input.value = normalized;
+          scheduleLivePreview();
+        });
+
+        input.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            // Let the arrow keys nudge through the same clamped path the
+            // buttons use instead of the browser's unbounded stepper.
+            event.preventDefault();
+            applyNudge(target, readNudge(target) + (event.key === 'ArrowUp' ? 1 : -1));
+          }
+        });
+      });
+
       scheduleLivePreview();
 
       // ---- AI Caption Assistant ----

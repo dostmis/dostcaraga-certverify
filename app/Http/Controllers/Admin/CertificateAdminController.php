@@ -3,15 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\AnchorCertificateOnHederaJob;
 use App\Jobs\SendCertificateEmailJob;
 use App\Models\Certificate;
 use App\Models\CertificateEndorsement;
 use App\Models\Recipient;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\CertificateGenerationService;
+use App\Services\EndorsementGenerationCoordinator;
+use App\Services\EndorsementTelegramNotifier;
 use App\Services\RecipientMatchingService;
-use App\Support\PdfImageNormalizer;
+use Carbon\Carbon;
 use App\Support\RegionalDirectorSignatory;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
@@ -23,20 +25,28 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
-use setasign\Fpdi\Fpdi;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CertificateAdminController extends Controller
 {
-    private const STANDARD_NAME_POS_X = 30.0;
-    private const STANDARD_NAME_POS_Y = 110.0;
-    private const STANDARD_NAME_FONT_SIZE = 45.0;
-    private const STANDARD_NAME_FONT_FAMILY = 'Times';
-    private const NOT_APPLICABLE = 'Not Applicable';
+    // Aliased rather than duplicated: CertificateGenerationService owns these
+    // now, and both the preview endpoints here and the queued generation job
+    // must stamp at identical coordinates.
+    private const STANDARD_NAME_POS_X = CertificateGenerationService::STANDARD_NAME_POS_X;
+    private const STANDARD_NAME_POS_Y = CertificateGenerationService::STANDARD_NAME_POS_Y;
+    private const STANDARD_NAME_FONT_SIZE = CertificateGenerationService::STANDARD_NAME_FONT_SIZE;
+    private const STANDARD_NAME_FONT_FAMILY = CertificateGenerationService::STANDARD_NAME_FONT_FAMILY;
+    private const NOT_APPLICABLE = CertificateGenerationService::NOT_APPLICABLE;
     private const CUSTOM_DOST_PROJECT_OPTION = 'Others';
     private const PARTICIPANTS_FILE_MAX_KB = 2048;
     private const CERTIFICATE_TEMPLATE_MAX_KB = 51200;
+
+    public function __construct(
+        private readonly CertificateGenerationService $generator,
+        private readonly EndorsementTelegramNotifier $telegram,
+        private readonly EndorsementGenerationCoordinator $generation,
+    ) {
+    }
 
     public function index(Request $request)
     {
@@ -67,7 +77,10 @@ class CertificateAdminController extends Controller
             $endorsementBaseQuery->where('submitted_by', $user->id);
         }
         $pendingEndorsementsCount = (clone $endorsementBaseQuery)
-            ->where('status', CertificateEndorsement::STATUS_ENDORSED)
+            ->whereIn('status', [
+                CertificateEndorsement::STATUS_ENDORSED,
+                CertificateEndorsement::STATUS_GENERATING,
+            ])
             ->count();
         if ($group === 'training') {
             $groups = $query
@@ -148,7 +161,10 @@ class CertificateAdminController extends Controller
 
         $pendingEndorsements = CertificateEndorsement::query()
             ->with(['submitter:id,name'])
-            ->where('status', CertificateEndorsement::STATUS_ENDORSED)
+            ->whereIn('status', [
+                CertificateEndorsement::STATUS_ENDORSED,
+                CertificateEndorsement::STATUS_GENERATING,
+            ])
             ->orderByDesc('created_at')
             ->paginate(5, ['*'], 'queue_page')
             ->withQueryString();
@@ -161,6 +177,7 @@ class CertificateAdminController extends Controller
             $endorsement->setAttribute('participants_review_ready', false);
             $endorsement->setAttribute('participants_preview_error', null);
             $endorsement->setAttribute('first_participant_name', null);
+            $endorsement->setAttribute('generation_progress', $this->generation->progress($endorsement));
 
             if (empty($endorsement->participants_file_path)) {
                 return;
@@ -177,7 +194,7 @@ class CertificateAdminController extends Controller
                 $endorsement->setAttribute('participants_remaining_count', max(0, count($names) - 8));
                 $endorsement->setAttribute('first_participant_name', $names[0] ?? null);
 
-                if (!empty($names)) {
+                if (!empty($names) && ! $endorsement->isGenerating()) {
                     $request->session()->put($this->endorsementParticipantsReviewedSessionKey($endorsement->id), true);
                     $endorsement->setAttribute('participants_review_ready', true);
                 }
@@ -391,19 +408,12 @@ class CertificateAdminController extends Controller
 
     private function dostPrograms(): array
     {
-        return [
-            $this->nationalRegularProgramLabel(),
-            'LGIA (Local Grants-in-Aid Program)',
-            'CEST (Community Empowerment through Science and Technology Program)',
-            $this->sscpProgramLabel(),
-            $this->setupProgramLabel(),
-            'Others',
-        ];
+        return $this->generator->dostPrograms();
     }
 
     private function nationalRegularProgramLabel(): string
     {
-        return 'National/Regular Program';
+        return CertificateGenerationService::PROGRAM_NATIONAL_REGULAR;
     }
 
     private function sourceOfFundsOptions(): array
@@ -438,7 +448,7 @@ class CertificateAdminController extends Controller
 
     private function sscpProgramLabel(): string
     {
-        return 'SSCP (Smart and Sustainable Communities Program)';
+        return CertificateGenerationService::PROGRAM_SSCP;
     }
 
     private function customDostProjectOptionLabel(): string
@@ -448,7 +458,7 @@ class CertificateAdminController extends Controller
 
     private function setupProgramLabel(): string
     {
-        return 'SETUP (Small Enterprise Technology Upgrading Program)';
+        return CertificateGenerationService::PROGRAM_SETUP;
     }
 
     private function setupOfficeProvinces(): array
@@ -792,43 +802,46 @@ class CertificateAdminController extends Controller
             if (empty($participants)) {
                 return back()->withErrors(['Unable to process participants file for this request.']);
             }
-
-            $generatedCertificates = $this->generateCertificatesFromPayload(
-                (array) $endorsement->payload,
-                $participants,
-                (string) $endorsement->template_pdf_path,
-                true
-            );
         } catch (\Throwable $e) {
             return back()->withErrors([$e->getMessage()]);
         }
 
-        $generated = count($generatedCertificates);
-        $endorsement->update([
-            'status' => CertificateEndorsement::STATUS_RD_APPROVED,
-            'rd_approved_by' => $user?->id,
-            'rd_approved_at' => now(),
-            'rd_rejected_by' => null,
-            'rd_rejected_at' => null,
-            'rejection_reason' => null,
-            'generated_count' => $generated,
-        ]);
-        $request->session()->forget($reviewKey);
-
-        [$queuedEmails, $skippedEmails] = $this->queueGeneratedCertificateEmails($generatedCertificates);
-        $message = "Regional Director approved and generated {$generated} certificates with QR and signatory block.";
-
-        if ($queuedEmails > 0 || $skippedEmails > 0) {
-            $message .= " {$queuedEmails} certificate email" . ($queuedEmails === 1 ? ' was' : 's were') . " queued";
-            if ($skippedEmails > 0) {
-                $message .= ", {$skippedEmails} skipped because of missing or invalid email";
-            }
-            $message .= '.';
+        // Claim before dispatching. A double-click races on this conditional
+        // update and only one caller wins, so only one batch is ever queued.
+        if (! $this->generation->claim($endorsement, $user?->id)) {
+            return back()->with('success', 'This certificate package is already being processed.');
         }
 
-        $this->notifyTelegramOnRdApproval($endorsement, $user, $generated);
+        try {
+            $this->generation->dispatchGeneration($endorsement, $participants, $user?->id);
+        } catch (\Throwable $e) {
+            // dispatchGeneration releases the claim before rethrowing, so the
+            // package is back in the queue and approvable again.
+            return back()->withErrors([$e->getMessage()]);
+        }
 
-        return back()->with('success', $message);
+        $request->session()->forget($reviewKey);
+
+        $count = count($participants);
+
+        return back()->with(
+            'info',
+            "Generating {$count} certificate" . ($count === 1 ? '' : 's')
+            . " in the background. Emails are queued once every certificate is generated;"
+            . ' if any one fails the whole package is rolled back and returned here.'
+        );
+    }
+
+    /**
+     * Generation progress for one endorsement, for the approvals view to poll.
+     */
+    public function endorsementGenerationProgress(Request $request, int $id)
+    {
+        $this->ensureRegionalDirectorAction($request->user());
+
+        $endorsement = CertificateEndorsement::findOrFail($id);
+
+        return response()->json($this->generation->progress($endorsement));
     }
 
     public function rejectEndorsement(Request $request, int $id)
@@ -980,156 +993,7 @@ class CertificateAdminController extends Controller
         CertificateEndorsement $endorsement,
         mixed $submitter
     ): void {
-        if (!config('services.telegram_bot.enabled', false)) {
-            return;
-        }
-
-        $participantsCount = (int) ($endorsement->participants_count ?? 0);
-        $notifyEvery = (bool) config('services.telegram_bot.notify_on_every_endorsement', true);
-        $bulkThreshold = max(1, (int) config('services.telegram_bot.bulk_threshold', 50));
-        if (!$notifyEvery && $participantsCount < $bulkThreshold) {
-            return;
-        }
-
-        $chatIds = $this->telegramRecipientChatIds();
-        if (empty($chatIds)) {
-            Log::warning('Telegram endorsement notification skipped: missing Telegram chat recipients.');
-
-            return;
-        }
-
-        $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
-        $trainingTitle = trim((string) ($payload['training_title'] ?? 'Untitled training'));
-        $dateRange = $this->formatEndorsementDateRange($payload);
-        $submittedBy = trim((string) ($submitter?->name ?? 'Unknown submitter'));
-        $approvalsUrl = url('/admin/certificates/approvals');
-
-        $message = "New certificate endorsement submitted.\n"
-            . "Training: {$trainingTitle}\n"
-            . "Schedule: {$dateRange}\n"
-            . "Participants: {$participantsCount}\n"
-            . "Submitted by: {$submittedBy}\n"
-            . "Review queue: {$approvalsUrl}";
-
-        $this->sendTelegramMessageToChats($chatIds, $message, $endorsement->id);
-    }
-
-    private function notifyTelegramOnRdApproval(
-        CertificateEndorsement $endorsement,
-        mixed $approver,
-        int $generatedCount
-    ): void {
-        if (!config('services.telegram_bot.enabled', false)) {
-            return;
-        }
-
-        if (!config('services.telegram_bot.notify_on_rd_approval', true)) {
-            return;
-        }
-
-        $bulkThreshold = max(1, (int) config('services.telegram_bot.bulk_threshold', 50));
-        $bulkOnly = (bool) config('services.telegram_bot.notify_on_rd_approval_bulk_only', true);
-        if ($bulkOnly && $generatedCount < $bulkThreshold) {
-            return;
-        }
-
-        $chatIds = $this->telegramRecipientChatIds();
-        if (empty($chatIds)) {
-            Log::warning('Telegram RD approval notification skipped: missing Telegram chat recipients.');
-
-            return;
-        }
-
-        $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
-        $trainingTitle = trim((string) ($payload['training_title'] ?? 'Untitled training'));
-        $dateRange = $this->formatEndorsementDateRange($payload);
-        $participantsCount = (int) ($endorsement->participants_count ?? $generatedCount);
-        $approvedBy = trim((string) ($approver?->name ?? 'Regional Director'));
-        $queueUrl = url('/admin/certificates?status=rd_approved');
-
-        $message = "RD approved certificate endorsement.\n"
-            . "Training: {$trainingTitle}\n"
-            . "Schedule: {$dateRange}\n"
-            . "Participants: {$participantsCount}\n"
-            . "Generated: {$generatedCount}\n"
-            . "Approved by: {$approvedBy}\n"
-            . "Approved queue: {$queueUrl}";
-
-        $this->sendTelegramMessageToChats($chatIds, $message, $endorsement->id);
-    }
-
-    private function telegramRecipientChatIds(): array
-    {
-        $chatIds = [];
-        $chatIdsCsv = (string) config('services.telegram_bot.chat_ids', '');
-        if ($chatIdsCsv !== '') {
-            $chatIds = array_map('trim', explode(',', $chatIdsCsv));
-        }
-
-        $legacyChatId = trim((string) config('services.telegram_bot.rd_chat_id', ''));
-        if ($legacyChatId !== '') {
-            foreach (explode(',', $legacyChatId) as $legacyChatIdPart) {
-                $legacyChatIdPart = trim($legacyChatIdPart);
-                if ($legacyChatIdPart !== '') {
-                    $chatIds[] = $legacyChatIdPart;
-                }
-            }
-        }
-
-        $uniqueValid = [];
-        foreach ($chatIds as $chatId) {
-            if ($chatId === '') {
-                continue;
-            }
-
-            if (!preg_match('/^(-?\d+|@[A-Za-z0-9_]{5,})$/', $chatId)) {
-                continue;
-            }
-
-            $uniqueValid[$chatId] = true;
-        }
-
-        return array_keys($uniqueValid);
-    }
-
-    private function sendTelegramMessageToChats(array $chatIds, string $message, int $endorsementId): void
-    {
-        $botToken = trim((string) config('services.telegram_bot.bot_token', ''));
-        if ($botToken === '') {
-            Log::warning('Telegram notification skipped: missing bot token.', [
-                'endorsement_id' => $endorsementId,
-            ]);
-
-            return;
-        }
-
-        $endpoint = "https://api.telegram.org/bot{$botToken}/sendMessage";
-        foreach ($chatIds as $chatId) {
-            try {
-                $response = Http::asJson()
-                    ->timeout(12)
-                    ->post($endpoint, [
-                        'chat_id' => $chatId,
-                        'text' => $message,
-                        'disable_web_page_preview' => true,
-                    ]);
-
-                if (!$response->successful()) {
-                    Log::warning('Telegram notification failed.', [
-                        'status' => $response->status(),
-                        'body' => $response->body(),
-                        'chat_id' => $chatId,
-                        'endorsement_id' => $endorsementId,
-                    ]);
-                }
-            } catch (\Throwable $e) {
-                Log::error('Telegram notification threw an exception.', [
-                    'error' => $e->getMessage(),
-                    'chat_id' => $chatId,
-                    'endorsement_id' => $endorsementId,
-                ]);
-            }
-        }
+        $this->telegram->notifyOnEndorsement($endorsement, $submitter);
     }
 
     private function exportTrimmedSignatureImage(UploadedFile $file, string $destinationAbs): bool
@@ -1488,10 +1352,10 @@ SYS;
 
         $participantName = $this->resolveLivePreviewParticipantName($request);
         $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
-        $verifyUrl = $this->buildVerifyUrl((string) Str::uuid());
+        $verifyUrl = $this->generator->buildVerifyUrl((string) Str::uuid());
 
         try {
-            $pdfContent = $this->renderStampedPdf(
+            $pdfContent = $this->generator->renderStampedPdf(
                 $sourceAbs,
                 $participantName,
                 self::STANDARD_NAME_POS_X,
@@ -1502,7 +1366,7 @@ SYS;
                 $previewCode,
                 $verifyUrl,
                 true,
-                $this->sanitizeCaptionMarkup($request->input('caption_text')),
+                $this->generator->sanitizeCaptionMarkup($request->input('caption_text')),
                 (string) $request->input('caption_alignment', 'center')
             );
         } catch (\Throwable $e) {
@@ -1538,10 +1402,10 @@ SYS;
         }
 
         $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
-        $verifyUrl = $this->buildVerifyUrl((string) Str::uuid());
+        $verifyUrl = $this->generator->buildVerifyUrl((string) Str::uuid());
 
         try {
-            $pdfContent = $this->renderStampedPdf(
+            $pdfContent = $this->generator->renderStampedPdf(
                 $sourceAbs,
                 $first['name'],
                 self::STANDARD_NAME_POS_X,
@@ -1623,7 +1487,7 @@ SYS;
         ]);
 
         $data = $validator->validate();
-        $data['caption_text'] = $this->sanitizeCaptionMarkup($data['caption_text'] ?? null);
+        $data['caption_text'] = $this->generator->sanitizeCaptionMarkup($data['caption_text'] ?? null);
         $automaticCertificateType = $this->automaticCertificateTypeByRecipientType()[$data['recipient_type']] ?? null;
         if ($automaticCertificateType !== null) {
             $data['certificate_type'] = $automaticCertificateType;
@@ -1734,131 +1598,40 @@ SYS;
         array $payload,
         array $participants,
         string $templatePath,
-        bool $applyRegionalDirectorESign = false
+        bool $applyRegionalDirectorESign = false,
+        ?int $endorsementId = null
     ): array
     {
-        $storage = Storage::disk('local');
-        if (!$storage->exists($templatePath)) {
-            throw new \RuntimeException('Template PDF for this request is missing in storage.');
-        }
-        if (empty($payload['training_title']) || empty($payload['training_date_from']) || empty($payload['issuing_office'])) {
-            throw new \RuntimeException('Training details for this request are incomplete.');
-        }
+        $this->generator->assertPayloadIsGeneratable($payload, $templatePath);
+
+        // FPDI cannot read the compressed cross-reference streams used by PDF
+        // 1.5+, which is what Word/Canva/Illustrator export. Normalising the
+        // template once here means the per-participant loop below never falls
+        // back to Ghostscript, which otherwise re-converts an identical file
+        // once per certificate and dominates the request (~98% of the time).
+        [$templatePath, $temporaryTemplatePath] = $this->generator->normalizeTemplateForFpdi($templatePath);
 
         $generatedCertificates = [];
         $recipientMatches = (array) ($payload['recipient_matches'] ?? []);
-        foreach ($participants as $i => $participant) {
-            $rowData = [
-                'participant_name' => $participant['name'],
-                'email' => $participant['email'] ?? null,
-                'recipient_id' => $recipientMatches[$i] ?? null,
-                'gender' => $participant['gender'] ?? null,
-                'age' => $participant['age'] ?? null,
-                'block_lot_purok' => $participant['block_lot_purok'] ?? null,
-                'region' => $participant['region'] ?? null,
-                'city_municipality' => $participant['city_municipality'] ?? null,
-                'barangay' => $participant['barangay'] ?? null,
-                'province' => $participant['province'] ?? null,
-                'industry' => $participant['industry'] ?? null,
-                'training_title' => $payload['training_title'] ?? '',
-                'caption_text' => $payload['caption_text'] ?? null,
-                'caption_alignment' => $payload['caption_alignment'] ?? 'center',
-                'activity_type' => $payload['activity_type'] ?? null,
-                'certificate_type' => $payload['certificate_type'] ?? null,
-                'recipient_type' => $payload['recipient_type'] ?? null,
-                'venue' => $payload['venue'] ?? null,
-                'topic' => $payload['topic'] ?? null,
-                'training_date' => $payload['training_date_from'] ?? null,
-                'training_date_to' => $payload['training_date_to'] ?? null,
-                'number_of_training_hours' => $payload['number_of_training_hours'] ?? null,
-                'dost_program' => $payload['dost_program'] ?? null,
-                'setup_office_province' => $payload['setup_office_province'] ?? self::NOT_APPLICABLE,
-                'pillar' => $payload['pillar'] ?? null,
-                'dost_project' => $payload['dost_project'] ?? null,
-                'project_code' => $payload['project_code'] ?? null,
-                'source_of_funds' => $payload['source_of_funds'] ?? self::NOT_APPLICABLE,
-                'training_budget' => $payload['training_budget'] ?? null,
-                'expected_number_of_participants' => $payload['expected_number_of_participants'] ?? null,
-                'issuing_office' => $payload['issuing_office'] ?? '',
-            ];
-
-            $cert = $this->createCertificate($rowData);
-            $sourcePath = 'certificates/source/' . $cert->certificate_code . '.pdf';
-            $storage->copy($templatePath, $sourcePath);
-            $this->stampCertificatePdf(
-                $cert,
-                $sourcePath,
-                self::STANDARD_NAME_POS_X,
-                self::STANDARD_NAME_POS_Y,
-                self::STANDARD_NAME_FONT_SIZE,
-                self::STANDARD_NAME_FONT_FAMILY,
-                true,
-                $applyRegionalDirectorESign,
-                $payload['caption_text'] ?? null,
-                $payload['caption_alignment'] ?? 'center'
-            );
-
-            // Anchor the certificate hash to Hedera (no-op unless HEDERA_ENABLED
-            // and a topic is configured). Runs on the queue, never blocks issuance.
-            AnchorCertificateOnHederaJob::dispatch($cert->id);
-
-            $generatedCertificates[] = $cert->fresh();
+        try {
+            foreach ($participants as $i => $participant) {
+                $generatedCertificates[] = $this->generator->generateForParticipant(
+                    $payload,
+                    $participant,
+                    $recipientMatches[$i] ?? null,
+                    $templatePath,
+                    $applyRegionalDirectorESign,
+                    $endorsementId,
+                    $i
+                );
+            }
+        } finally {
+            if ($temporaryTemplatePath !== null) {
+                Storage::disk('local')->delete($temporaryTemplatePath);
+            }
         }
 
         return $generatedCertificates;
-    }
-
-    private function queueGeneratedCertificateEmails(array $certificates): array
-    {
-        $queued = 0;
-        $skipped = 0;
-
-        foreach ($certificates as $certificate) {
-            if (! $certificate instanceof Certificate) {
-                continue;
-            }
-
-            $email = trim((string) ($certificate->email ?? ''));
-            if ($email === '') {
-                $certificate->forceFill([
-                    'email_delivery_status' => Certificate::EMAIL_STATUS_SKIPPED_NO_EMAIL,
-                    'email_failure_message' => 'Certificate recipient does not have an email address.',
-                    'email_queued_at' => null,
-                    'email_last_attempt_at' => null,
-                    'email_sent_at' => null,
-                    'email_failed_at' => null,
-                ])->save();
-                $skipped++;
-                continue;
-            }
-
-            if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                $certificate->forceFill([
-                    'email_delivery_status' => Certificate::EMAIL_STATUS_SKIPPED_INVALID_EMAIL,
-                    'email_failure_message' => 'Certificate recipient email address is invalid.',
-                    'email_queued_at' => null,
-                    'email_last_attempt_at' => null,
-                    'email_sent_at' => null,
-                    'email_failed_at' => null,
-                ])->save();
-                $skipped++;
-                continue;
-            }
-
-            $certificate->forceFill([
-                'email_delivery_status' => Certificate::EMAIL_STATUS_QUEUED,
-                'email_queued_at' => now(),
-                'email_last_attempt_at' => null,
-                'email_sent_at' => null,
-                'email_failed_at' => null,
-                'email_failure_message' => null,
-            ])->save();
-
-            SendCertificateEmailJob::dispatch($certificate->id);
-            $queued++;
-        }
-
-        return [$queued, $skipped];
     }
 
     private function parseParticipantStoragePath(string $path): array
@@ -2288,839 +2061,9 @@ SYS;
         return null;
     }
 
-    private function createCertificate(array $data): Certificate
-    {
-        $officeCodeMap = [
-            'DOST Caraga - Fields Operation Division' => 'FOD',
-            'DOST Caraga - Financial and Administrative Services' => 'FAS',
-            'DOST Caraga - Office of the Regional Director' => 'ORD',
-            'DOST Caraga - Technical Support Services' => 'TSS',
-            'DOST Caraga - Innovation Unit' => 'IU',
-            'DOST Caraga - PSTO-Agusan Del Norte' => 'ADN',
-            'DOST Caraga - PSTO-Agusan Del Sur' => 'ADS',
-            'DOST Caraga - PSTO-Surigao Del Norte' => 'SDN',
-            'DOST Caraga - PSTO-Surigao Del Sur' => 'SDS',
-            'DOST Caraga - PSTO-Province of Dinagat Island' => 'PDI',
-        ];
-
-        $program = strtoupper(trim((string) ($data['dost_program'] ?? '')));
-        if (!in_array($program, $this->dostPrograms(), true)) {
-            $program = '';
-        }
-
-        if ($program === '') {
-            $program = $officeCodeMap[$data['issuing_office']] ?? '';
-        }
-
-        if ($program === '') {
-            $program = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string) ($data['program_code'] ?? '')));
-        }
-        if ($program === '') {
-            $program = 'GEN';
-        }
-
-        $stopWords = ['and', 'of', 'the', 'for', 'to', 'in', 'on', 'a', 'an', '&'];
-        $words = preg_split('/[^A-Za-z0-9]+/', $data['training_title']);
-        $letters = '';
-        foreach ($words as $word) {
-            if ($word === '') {
-                continue;
-            }
-            if (in_array(strtolower($word), $stopWords, true)) {
-                continue;
-            }
-            $letters .= strtoupper($word[0]);
-            if (strlen($letters) >= 3) {
-                break;
-            }
-        }
-        if ($letters === '' && !empty($words[0])) {
-            $letters = strtoupper($words[0][0]);
-        }
-        $short = substr($letters, 0, 3);
-        if ($short === '') {
-            $short = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string) ($data['training_short'] ?? '')));
-            $short = substr($short, 0, 3) ?: 'GEN';
-        }
-
-        $batchNumber = Certificate::whereDate('created_at', now('Asia/Manila')->toDateString())->count() + 1;
-        $batch = str_pad((string) $batchNumber, 2, '0', STR_PAD_LEFT);
-
-        $year = date('Y', strtotime($data['training_date']));
-        $prefix = "{$year}-{$program}-{$short}-{$batch}-";
-
-        return DB::transaction(function () use ($data, $prefix) {
-            $last = Certificate::where('certificate_code', 'like', $prefix . '%')
-                ->orderByDesc('certificate_code')
-                ->value('certificate_code');
-
-            $nextNumber = 1;
-            if ($last) {
-                $tail = substr($last, -3);
-                if (ctype_digit($tail)) {
-                    $nextNumber = intval($tail) + 1;
-                }
-            }
-
-            $code = $prefix . str_pad((string) $nextNumber, 3, '0', STR_PAD_LEFT);
-            return Certificate::create([
-                'certificate_code' => $code,
-                'participant_name' => $data['participant_name'],
-                'email' => $data['email'] ?? null,
-                'recipient_id' => $data['recipient_id'] ?? null,
-                'gender' => $data['gender'] ?? null,
-                'age' => $data['age'] ?? null,
-                'block_lot_purok' => $data['block_lot_purok'] ?? null,
-                'region' => $data['region'] ?? null,
-                'city_municipality' => $data['city_municipality'] ?? null,
-                'barangay' => $data['barangay'] ?? null,
-                'province' => $data['province'] ?? null,
-                'industry' => $data['industry'] ?? null,
-                'training_title' => $data['training_title'],
-                'activity_type' => $data['activity_type'] ?? null,
-                'certificate_type' => $data['certificate_type'] ?? null,
-                'recipient_type' => $data['recipient_type'] ?? null,
-                'venue' => $data['venue'] ?? null,
-                'topic' => $data['topic'] ?? null,
-                'training_date' => $data['training_date'],
-                'training_date_to' => $data['training_date_to'] ?? null,
-                'number_of_training_hours' => $data['number_of_training_hours'] ?? null,
-                'dost_program' => $data['dost_program'] ?? null,
-                'setup_office_province' => $data['setup_office_province'] ?? self::NOT_APPLICABLE,
-                'pillar' => $data['pillar'] ?? null,
-                'dost_project' => $data['dost_project'] ?? null,
-                'project_code' => $data['project_code'] ?? null,
-                'source_of_funds' => $data['source_of_funds'] ?? self::NOT_APPLICABLE,
-                'training_budget' => $data['training_budget'] ?? null,
-                'expected_number_of_participants' => $data['expected_number_of_participants'] ?? null,
-                'issuing_office' => $data['issuing_office'],
-                'status' => 'valid',
-            ]);
-        });
-    }
-
-    private function stampCertificatePdf(
-        Certificate $cert,
-        string $sourcePath,
-        float $namePosX,
-        float $namePosY,
-        float $nameFontSize,
-        string $nameFontFamily,
-        bool $centerName,
-        bool $applyRegionalDirectorESign = false,
-        ?string $captionText = null,
-        string $captionAlignment = 'center'
-    ): void
-    {
-        $verifyUrl = $this->buildVerifyUrl($cert->public_token);
-        $sourceAbs = Storage::disk('local')->path($sourcePath);
-        $pdfContent = $this->renderStampedPdf(
-            $sourceAbs,
-            $cert->participant_name,
-            $namePosX,
-            $namePosY,
-            $nameFontSize,
-            $nameFontFamily,
-            $centerName,
-            $cert->certificate_code,
-            $verifyUrl,
-            $applyRegionalDirectorESign,
-            $captionText,
-            $captionAlignment
-        );
-
-        $stampedRel = 'certificates/stamped/' . $cert->certificate_code . '.pdf';
-        Storage::disk('local')->put($stampedRel, $pdfContent);
-
-        $cert->update([
-            'source_pdf_path' => $sourcePath,
-            'stamped_pdf_path' => $stampedRel,
-        ]);
-    }
-
-    private function renderStampedPdf(
-        string $sourceAbs,
-        string $participantName,
-        float $namePosX,
-        float $namePosY,
-        float $nameFontSize,
-        string $nameFontFamily,
-        bool $centerName,
-        string $codeText,
-        string $verifyUrl,
-        bool $applyRegionalDirectorESign = false,
-        ?string $captionText = null,
-        string $captionAlignment = 'center'
-    ): string
-    {
-        $qrPng = QrCode::format('png')->size(220)->margin(1)->generate($verifyUrl);
-
-        $tmpQr = storage_path('app/tmp_qr_' . Str::uuid() . '.png');
-        @mkdir(dirname($tmpQr), 0777, true);
-        file_put_contents($tmpQr, $qrPng);
-        $temporaryFiles = [$tmpQr];
-        $qrForPdf = PdfImageNormalizer::prepareForFpdf($tmpQr);
-        if ($qrForPdf !== $tmpQr) {
-            $temporaryFiles[] = $qrForPdf;
-        }
-
-        $pdf = new Fpdi();
-        $converted = null;
-        try {
-            $pageCount = $pdf->setSourceFile($sourceAbs);
-        } catch (\Throwable $e) {
-            $converted = $this->convertPdfWithGhostscript($sourceAbs);
-            $pdf = new Fpdi();
-            $pageCount = $pdf->setSourceFile($converted);
-        }
-
-        for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
-            $tplId = $pdf->importPage($pageNo);
-            $size = $pdf->getTemplateSize($tplId);
-            $orientation = $size['width'] > $size['height'] ? 'L' : 'P';
-            $pdf->AddPage($orientation, [$size['width'], $size['height']]);
-            $pdf->useTemplate($tplId);
-
-            if ($pageNo === 1) {
-                $pdf->SetFont($nameFontFamily, '', $nameFontSize);
-                $pdf->SetTextColor(0, 0, 0);
-                $nameText = $this->toLatin1($participantName);
-                $nameX = $namePosX;
-                if ($centerName) {
-                    $textWidth = $pdf->GetStringWidth($nameText);
-                    $nameX = max(0, ($size['width'] - $textWidth) / 2);
-                }
-                $pdf->Text($nameX, $namePosY, $nameText);
-
-                if ($captionText && trim($captionText) !== '') {
-                    $this->setPdfCaptionFont($pdf, 13.2);
-                    $pdf->SetTextColor(60, 60, 60);
-
-                    $captionLines = $this->captionMarkupToStyledLines($captionText);
-                    if ($captionLines !== []) {
-                        $captionWidth = max(80.0, $size['width'] - 80.0);
-                        $captionX = max(40.0, ($size['width'] - $captionWidth) / 2);
-                        $captionY = $namePosY + 11.0;
-                        $captionAlign = match ($captionAlignment) {
-                            'left' => 'L',
-                            'right' => 'R',
-                            'justify' => 'J',
-                            default => 'C',
-                        };
-
-                        $currentCaptionY = $captionY;
-                        foreach ($captionLines as $lineRuns) {
-                            // An empty run list marks a blank line (a double line
-                            // break in the editor) and renders as a vertical gap so
-                            // the PDF mirrors the editor character-for-character.
-                            if ($lineRuns === []) {
-                                $currentCaptionY += 5.2;
-                                continue;
-                            }
-
-                            $wrappedLines = $this->buildStyledPdfLines($pdf, $lineRuns, $captionWidth, 13.2);
-                            $currentCaptionY = $this->renderStyledPdfLines(
-                                $pdf,
-                                $wrappedLines,
-                                $captionX,
-                                $currentCaptionY,
-                                $captionWidth,
-                                5.2,
-                                $captionAlign,
-                                13.2
-                            );
-                        }
-                    }
-                }
-
-                if ($applyRegionalDirectorESign) {
-                    $this->stampRegionalDirectorSignatureBlock($pdf, $size);
-                }
-            }
-
-            $qrSize = 20;
-            $margin = 10;
-            $x = $size['width'] - $qrSize - $margin;
-
-            $textOffset = 4;
-            $requiredBottom = $qrSize + $textOffset + 9;
-            $maxY = $size['height'] - $margin - $requiredBottom;
-            $y = min($size['height'] - $qrSize - $margin, $maxY);
-            $y = max($margin, $y);
-
-            $pdf->Image($qrForPdf, $x, $y, $qrSize, $qrSize);
-
-            $pdf->SetFont('Helvetica', '', 8);
-            $pdf->SetTextColor(0, 0, 0);
-            $textWidth = $pdf->GetStringWidth($codeText);
-            $textX = $x + ($qrSize - $textWidth) / 2;
-            $textX = max($margin, min($textX, $size['width'] - $margin - $textWidth));
-            $textY = $y + $qrSize + $textOffset;
-            $pdf->Text($textX, $textY, $codeText);
-
-            $linkText = $this->toLatin1($verifyUrl);
-            $pdf->SetFont('Helvetica', '', 5.5);
-            $linkWidth = $pdf->GetStringWidth($linkText);
-            $linkX = max($margin, $size['width'] - $margin - $linkWidth);
-            $linkY = $textY + 3.5;
-            $pdf->Text($linkX, $linkY, $linkText);
-        }
-
-        foreach (array_unique($temporaryFiles) as $temporaryFile) {
-            @unlink($temporaryFile);
-        }
-        if ($converted) {
-            @unlink($converted);
-        }
-
-        return $pdf->Output('S');
-    }
-
-    private function buildVerifyUrl(string $token): string
-    {
-        $baseUrl = rtrim((string) config('app.url'), '/');
-        $verifyPath = route('cert.verify', ['t' => $token], false);
-
-        return $baseUrl . $verifyPath;
-    }
-
-    private function toLatin1(string $value): string
-    {
-        if ($value === '') {
-            return $value;
-        }
-
-        $converted = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $value);
-        if ($converted === false) {
-            return utf8_decode($value);
-        }
-
-        return $converted;
-    }
-
-    private function convertPdfWithGhostscript(string $sourceAbs): string
-    {
-        $tmpDir = storage_path('app/tmp');
-        @mkdir($tmpDir, 0777, true);
-        $outPath = $tmpDir . '/fpdi_' . Str::uuid() . '.pdf';
-
-        $cmd = 'gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/prepress -dNOPAUSE -dBATCH -dSAFER -o '
-            . escapeshellarg($outPath) . ' ' . escapeshellarg($sourceAbs);
-
-        @exec($cmd, $output, $code);
-
-        if ($code !== 0 || !is_file($outPath)) {
-            $message = $code === 127
-                ? 'Ghostscript (gs) is not installed on the server. Please install it to process PDFs, or upload a PDF saved as version 1.4.'
-                : 'This PDF cannot be processed. Please re-save it as PDF 1.4 or contact the administrator.';
-            throw new \RuntimeException($message);
-        }
-
-        return $outPath;
-    }
-
-    /**
-     * Turn a stored caption into the exact lines the PDF should print.
-     *
-     * The result is an array of "lines", each being an ordered list of styled
-     * runs (`['text' => string, 'style' => '' | 'B' | 'I' | 'BI']`). An empty
-     * array marks a blank line — i.e. a double line break in the editor — which
-     * the renderer turns into a vertical gap.
-     *
-     * Formatting is read straight from the sanitized HTML (`<strong>`, `<em>`,
-     * `<br>`, `<div>`). There is no `**` / `*` markdown round-trip, so literal
-     * asterisks, ampersands and quotation marks are printed verbatim and bold
-     * text never leaks stray markers across wrapped lines.
-     */
-    private function captionMarkupToStyledLines(?string $captionText): array
-    {
-        $markup = $this->sanitizeCaptionMarkup($captionText);
-        if ($markup === null || $markup === '') {
-            return [];
-        }
-
-        // Plain captions (no formatting tags) are printed exactly as typed,
-        // splitting only on real line breaks. No characters are interpreted.
-        if (preg_match('/<[^>]+>/', $markup) !== 1) {
-            $lines = [];
-            foreach (preg_split("/\n/", $markup) ?: [] as $line) {
-                $line = rtrim($line);
-                $lines[] = $line === ''
-                    ? []
-                    : [['text' => $this->toLatin1($line), 'style' => '']];
-            }
-
-            return $this->trimBlankStyledLines($lines);
-        }
-
-        $dom = new \DOMDocument('1.0', 'UTF-8');
-        $previousState = libxml_use_internal_errors(true);
-        $dom->loadHTML('<div>' . $markup . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previousState);
-
-        $root = $dom->getElementsByTagName('div')->item(0);
-        if (!$root instanceof \DOMElement) {
-            return [];
-        }
-
-        $state = ['lines' => [], 'current' => [], 'lastWasBreak' => true];
-        foreach ($root->childNodes as $childNode) {
-            $this->collectCaptionStyledRuns($childNode, false, false, $state);
-        }
-        if (!$state['lastWasBreak']) {
-            $state['lines'][] = $state['current'];
-        }
-
-        return $this->trimBlankStyledLines($state['lines']);
-    }
-
-    /**
-     * Walk a caption HTML node, appending styled runs and line breaks into the
-     * shared $state accumulator.
-     *
-     * @param array{lines: array<int, array<int, array{text: string, style: string}>>, current: array<int, array{text: string, style: string}>, lastWasBreak: bool} $state
-     */
-    private function collectCaptionStyledRuns(\DOMNode $node, bool $bold, bool $italic, array &$state): void
-    {
-        if ($node instanceof \DOMText) {
-            $text = html_entity_decode($node->nodeValue ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            // Line breaks are carried solely by <br>/<div>; any literal newline or
-            // tab the markup picked up collapses to a single space, matching how
-            // the editor and a browser render inline whitespace.
-            $text = preg_replace('/[\r\n\t]+/', ' ', $text) ?? $text;
-            if ($text === '') {
-                return;
-            }
-
-            $state['current'][] = [
-                'text' => $this->toLatin1($text),
-                'style' => $this->captionStyleToken($bold, $italic),
-            ];
-            $state['lastWasBreak'] = false;
-
-            return;
-        }
-
-        if (!$node instanceof \DOMElement) {
-            return;
-        }
-
-        $tagName = strtolower($node->tagName);
-
-        if ($tagName === 'br') {
-            $state['lines'][] = $state['current'];
-            $state['current'] = [];
-            $state['lastWasBreak'] = true;
-
-            return;
-        }
-
-        $childBold = $bold || in_array($tagName, ['strong', 'b'], true);
-        $childItalic = $italic || in_array($tagName, ['em', 'i'], true);
-        $isBlock = in_array($tagName, ['div', 'p'], true);
-
-        // A block element starts on its own line: flush any pending inline content
-        // before descending into it.
-        if ($isBlock && !$state['lastWasBreak']) {
-            $state['lines'][] = $state['current'];
-            $state['current'] = [];
-            $state['lastWasBreak'] = true;
-        }
-
-        foreach ($node->childNodes as $childNode) {
-            $this->collectCaptionStyledRuns($childNode, $childBold, $childItalic, $state);
-        }
-
-        // ...and it ends the line it occupied, unless a <br> already closed it.
-        if ($isBlock && !$state['lastWasBreak']) {
-            $state['lines'][] = $state['current'];
-            $state['current'] = [];
-            $state['lastWasBreak'] = true;
-        }
-    }
-
-    private function captionStyleToken(bool $bold, bool $italic): string
-    {
-        return ($bold ? 'B' : '') . ($italic ? 'I' : '');
-    }
-
-    /**
-     * Drop blank lines from the start and end of a caption so leading/trailing
-     * empty editor lines do not push the caption off-centre.
-     *
-     * @param array<int, array<int, array{text: string, style: string}>> $lines
-     * @return array<int, array<int, array{text: string, style: string}>>
-     */
-    private function trimBlankStyledLines(array $lines): array
-    {
-        while ($lines !== [] && $lines[array_key_first($lines)] === []) {
-            array_shift($lines);
-        }
-        while ($lines !== [] && $lines[array_key_last($lines)] === []) {
-            array_pop($lines);
-        }
-
-        return array_values($lines);
-    }
-
-    private function sanitizeCaptionMarkup(?string $captionText): ?string
-    {
-        $captionText = trim((string) $captionText);
-        if ($captionText === '') {
-            return null;
-        }
-
-        $captionText = preg_replace("/\r\n?/", "\n", $captionText) ?? $captionText;
-        if (preg_match('/<[^>]+>/', $captionText) !== 1) {
-            return $captionText;
-        }
-
-        $dom = new \DOMDocument('1.0', 'UTF-8');
-        $previousState = libxml_use_internal_errors(true);
-        $dom->loadHTML('<div>' . $captionText . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previousState);
-
-        $root = $dom->getElementsByTagName('div')->item(0);
-        if (!$root instanceof \DOMElement) {
-            return null;
-        }
-
-        $sanitized = trim($this->sanitizeCaptionHtmlChildren($root));
-
-        return $sanitized !== '' ? $sanitized : null;
-    }
-
-    private function sanitizeCaptionHtmlChildren(\DOMNode $node): string
-    {
-        $buffer = '';
-        foreach ($node->childNodes as $childNode) {
-            $buffer .= $this->sanitizeCaptionHtmlNode($childNode);
-        }
-
-        return $buffer;
-    }
-
-    private function sanitizeCaptionHtmlNode(\DOMNode $node): string
-    {
-        if ($node instanceof \DOMText) {
-            return htmlspecialchars($node->nodeValue ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        }
-
-        if (!$node instanceof \DOMElement) {
-            return '';
-        }
-
-        $tagName = strtolower($node->tagName);
-        $content = $this->sanitizeCaptionHtmlChildren($node);
-
-        return match ($tagName) {
-            'strong', 'b' => '<strong>' . $content . '</strong>',
-            'em', 'i' => '<em>' . $content . '</em>',
-            'br' => '<br>',
-            'div', 'p' => '<div>' . ($content !== '' ? $content : '<br>') . '</div>',
-            default => $content,
-        };
-    }
-
-    private function setPdfCaptionFont(Fpdi $pdf, float $size, string $style = ''): bool
-    {
-        $fontDir = resource_path('fonts');
-        $style = strtoupper($style);
-        $fontMap = [
-            '' => 'Montserrat-Regular.php',
-            'B' => 'Montserrat-Bold.php',
-            'I' => 'Montserrat-Italic.php',
-            'BI' => 'Montserrat-BoldItalic.php',
-        ];
-        $fontFile = $fontMap[$style] ?? $fontMap[''];
-        $fontDefinition = $fontDir . DIRECTORY_SEPARATOR . $fontFile;
-
-        if (is_file($fontDefinition)) {
-            $pdf->AddFont('Montserrat', $style, $fontFile, $fontDir);
-            $pdf->SetFont('Montserrat', $style, $size);
-            return true;
-        }
-
-        $regularDefinition = $fontDir . DIRECTORY_SEPARATOR . 'Montserrat-Regular.php';
-        if (is_file($regularDefinition)) {
-            $pdf->AddFont('Montserrat', '', 'Montserrat-Regular.php', $fontDir);
-            $pdf->SetFont('Montserrat', '', $size);
-            return true;
-        }
-
-        $fallbackStyle = in_array($style, ['B', 'I', 'BI'], true) ? $style : '';
-        $pdf->SetFont('Helvetica', $fallbackStyle, $size);
-        return false;
-    }
-
-    private function hasPdfCaptionFontDefinition(string $style = ''): bool
-    {
-        $style = strtoupper($style);
-        $fontMap = [
-            '' => 'Montserrat-Regular.php',
-            'B' => 'Montserrat-Bold.php',
-            'I' => 'Montserrat-Italic.php',
-            'BI' => 'Montserrat-BoldItalic.php',
-        ];
-
-        return is_file(resource_path('fonts/' . ($fontMap[$style] ?? $fontMap[''])));
-    }
-
-    /**
-     * Wrap a single caption line (a list of styled runs) into rendered visual
-     * lines that each fit within $maxWidth.
-     *
-     * @param array<int, array{text: string, style: string}> $runs
-     */
-    private function buildStyledPdfLines(Fpdi $pdf, array $runs, float $maxWidth, float $fontSize): array
-    {
-        $lines = [];
-        $currentLine = [];
-        $currentWidth = 0.0;
-
-        foreach ($runs as $run) {
-            $pieces = preg_split('/(\s+)/u', $run['text'], -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [];
-            foreach ($pieces as $piece) {
-                $isWhitespace = trim($piece) === '';
-                if ($isWhitespace) {
-                    if ($currentLine === [] || end($currentLine)['is_space']) {
-                        continue;
-                    }
-                    $spaceWidth = $this->measurePdfCaptionText($pdf, ' ', $fontSize, $run['style']);
-                    $currentLine[] = ['text' => ' ', 'style' => $run['style'], 'width' => $spaceWidth, 'is_space' => true];
-                    $currentWidth += $spaceWidth;
-                    continue;
-                }
-
-                $wordPieces = $this->splitPdfWordToWidthWithStyle($pdf, $piece, $maxWidth, $fontSize, $run['style']);
-                foreach ($wordPieces as $wordPiece) {
-                    $wordWidth = $this->measurePdfCaptionText($pdf, $wordPiece, $fontSize, $run['style']);
-
-                    if ($currentLine !== [] && $currentWidth + $wordWidth > $maxWidth) {
-                        while ($currentLine !== [] && end($currentLine)['is_space']) {
-                            $spaceToken = array_pop($currentLine);
-                            $currentWidth -= $spaceToken['width'];
-                        }
-                        if ($currentLine !== []) {
-                            $lines[] = ['tokens' => $currentLine, 'width' => $currentWidth];
-                        }
-                        $currentLine = [];
-                        $currentWidth = 0.0;
-                    }
-
-                    $currentLine[] = ['text' => $wordPiece, 'style' => $run['style'], 'width' => $wordWidth, 'is_space' => false];
-                    $currentWidth += $wordWidth;
-                }
-            }
-        }
-
-        while ($currentLine !== [] && end($currentLine)['is_space']) {
-            $spaceToken = array_pop($currentLine);
-            $currentWidth -= $spaceToken['width'];
-        }
-        if ($currentLine !== []) {
-            $lines[] = ['tokens' => $currentLine, 'width' => $currentWidth];
-        }
-
-        return $lines;
-    }
-
-    private function renderStyledPdfLines(
-        Fpdi $pdf,
-        array $lines,
-        float $x,
-        float $y,
-        float $width,
-        float $lineHeight,
-        string $align,
-        float $fontSize
-    ): float {
-        $currentY = $y;
-        $lineCount = count($lines);
-
-        foreach ($lines as $index => $line) {
-            $lineWidth = (float) ($line['width'] ?? 0.0);
-            $tokens = (array) ($line['tokens'] ?? []);
-            $cursorX = match ($align) {
-                'R' => $x + max(0.0, $width - $lineWidth),
-                'C' => $x + max(0.0, ($width - $lineWidth) / 2),
-                default => $x,
-            };
-
-            $spaceCount = count(array_filter($tokens, fn (array $token) => $token['is_space'] ?? false));
-            $extraSpace = ($align === 'J' && $index < $lineCount - 1 && $spaceCount > 0)
-                ? max(0.0, ($width - $lineWidth) / $spaceCount)
-                : 0.0;
-
-            foreach ($tokens as $token) {
-                if ($token['is_space']) {
-                    $cursorX += $token['width'] + $extraSpace;
-                    continue;
-                }
-
-                $this->drawPdfCaptionToken($pdf, $cursorX, $currentY, $lineHeight, $token['text'], $token['style'], $fontSize);
-                $cursorX += $token['width'];
-            }
-
-            $currentY += $lineHeight;
-        }
-
-        return $currentY;
-    }
-
-    private function drawPdfCaptionToken(
-        Fpdi $pdf,
-        float $x,
-        float $y,
-        float $lineHeight,
-        string $text,
-        string $style,
-        float $fontSize
-    ): void {
-        $usesMontserrat = $this->setPdfCaptionFont($pdf, $fontSize, $style);
-        $pdf->SetXY($x, $y);
-        $pdf->Write($lineHeight, $text);
-
-        if ($usesMontserrat && str_contains($style, 'B') && !$this->hasPdfCaptionFontDefinition($style)) {
-            $boldOffsets = [
-                [0.12, 0.00],
-                [0.24, 0.00],
-                [0.12, 0.06],
-                [0.24, 0.06],
-            ];
-
-            foreach ($boldOffsets as [$offsetX, $offsetY]) {
-                $pdf->SetXY($x + $offsetX, $y + $offsetY);
-                $pdf->Write($lineHeight, $text);
-            }
-        }
-    }
-
-    private function measurePdfCaptionText(Fpdi $pdf, string $text, float $fontSize, string $style = ''): float
-    {
-        $this->setPdfCaptionFont($pdf, $fontSize, $style);
-        return $pdf->GetStringWidth($text);
-    }
-
-    private function splitPdfWordToWidthWithStyle(Fpdi $pdf, string $word, float $maxWidth, float $fontSize, string $style = ''): array
-    {
-        if ($word === '' || $this->measurePdfCaptionText($pdf, $word, $fontSize, $style) <= $maxWidth) {
-            return [$word];
-        }
-
-        $segments = [];
-        $current = '';
-        $characters = preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        foreach ($characters as $character) {
-            $candidate = $current . $character;
-            if ($current !== '' && $this->measurePdfCaptionText($pdf, $candidate, $fontSize, $style) > $maxWidth) {
-                $segments[] = $current;
-                $current = $character;
-                continue;
-            }
-
-            $current = $candidate;
-        }
-
-        if ($current !== '') {
-            $segments[] = $current;
-        }
-
-        return $segments === [] ? [$word] : $segments;
-    }
-
-
-    private function stampRegionalDirectorSignatureBlock(Fpdi $pdf, array $pageSize): void
-    {
-        $this->stampRegionalDirectorESign($pdf, $pageSize);
-    }
-
-    private function stampRegionalDirectorESign(Fpdi $pdf, array $pageSize): ?array
-    {
-        $esignPath = $this->resolveRegionalDirectorESignPath();
-        if (!$esignPath) {
-            return null;
-        }
-
-        $boxWidth = (float) env('CERT_RD_ESIGN_WIDTH', 84);
-        $boxHeight = (float) env('CERT_RD_ESIGN_HEIGHT', 28);
-        if ($boxWidth <= 0 || $boxHeight <= 0) {
-            return null;
-        }
-
-        [$width, $height] = $this->fitImageWithinBox($esignPath, $boxWidth, $boxHeight);
-
-        $xEnv = env('CERT_RD_ESIGN_X');
-        $yEnv = env('CERT_RD_ESIGN_Y');
-        $yOffsetEnv = env('CERT_RD_ESIGN_Y_OFFSET', 0);
-        $yOffset = is_numeric($yOffsetEnv) ? (float) $yOffsetEnv : 0.0;
-
-        $x = is_numeric($xEnv)
-            ? (float) $xEnv
-            : (($pageSize['width'] - $boxWidth) / 2);
-        $y = is_numeric($yEnv)
-            ? (float) $yEnv
-            : ($pageSize['height'] - $boxHeight - 18);
-        $y += $yOffset;
-
-        $margin = 5.0;
-        $maxX = max($margin, $pageSize['width'] - $margin - $boxWidth);
-        $maxY = max($margin, $pageSize['height'] - $margin - $boxHeight);
-        $x = min(max($x, $margin), $maxX);
-        $y = min(max($y, $margin), $maxY);
-
-        $drawX = $x + (($boxWidth - $width) / 2);
-        $drawY = $y + (($boxHeight - $height) / 2);
-
-        $pdf->Image($esignPath, $drawX, $drawY, $width, $height);
-
-        return [
-            'x' => $drawX,
-            'y' => $drawY,
-            'width' => $width,
-            'height' => $height,
-        ];
-    }
-
-    private function fitImageWithinBox(string $imagePath, float $boxWidth, float $boxHeight): array
-    {
-        $imageSize = @getimagesize($imagePath);
-        $nativeWidth = (float) ($imageSize[0] ?? 0);
-        $nativeHeight = (float) ($imageSize[1] ?? 0);
-
-        if ($nativeWidth <= 0 || $nativeHeight <= 0) {
-            return [$boxWidth, $boxHeight];
-        }
-
-        $scale = min($boxWidth / $nativeWidth, $boxHeight / $nativeHeight);
-        if ($scale <= 0 || !is_finite($scale)) {
-            return [$boxWidth, $boxHeight];
-        }
-
-        return [
-            max(0.1, $nativeWidth * $scale),
-            max(0.1, $nativeHeight * $scale),
-        ];
-    }
-
-    private function resolveRegionalDirectorESignPath(): ?string
-    {
-        return RegionalDirectorSignatory::resolvedPath();
-    }
-
     private function formatEndorsementDateRange(array $payload): string
     {
-        $from = $payload['training_date_from'] ?? null;
-        $to = $payload['training_date_to'] ?? $from;
-
-        if (!$from) {
-            return '-';
-        }
-
-        return $from === $to ? $from : ($from . ' to ' . $to);
+        return $this->telegram->formatDateRange($payload);
     }
 
     private function canPrepareCertificate(?User $user): bool
@@ -3198,7 +2141,7 @@ SYS;
 
         $firstParticipantName = $this->firstEndorsementParticipantName($endorsement);
         $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
-        $verifyUrl = $this->buildVerifyUrl((string) Str::uuid());
+        $verifyUrl = $this->generator->buildVerifyUrl((string) Str::uuid());
 
         // The caption lives in the endorsement payload (see buildTrainingPayload),
         // not as a column on the endorsement row, so read it from there to match
@@ -3206,7 +2149,7 @@ SYS;
         $endorsementPayload = (array) $endorsement->payload;
 
         try {
-            $pdfContent = $this->renderStampedPdf(
+            $pdfContent = $this->generator->renderStampedPdf(
                 $storage['absolute'],
                 $firstParticipantName,
                 self::STANDARD_NAME_POS_X,

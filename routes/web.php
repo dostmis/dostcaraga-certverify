@@ -65,6 +65,7 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
         Route::post('/certificates/signatory', [CertificateAdminController::class, 'updateRegionalDirectorSignatory'])->name('admin.certs.signatory.update');
         Route::post('/certificates/endorsements/{id}/approve', [CertificateAdminController::class, 'approveEndorsement'])->name('admin.certs.endorsements.approve');
         Route::post('/certificates/endorsements/{id}/reject', [CertificateAdminController::class, 'rejectEndorsement'])->name('admin.certs.endorsements.reject');
+        Route::get('/certificates/endorsements/{id}/generation-progress', [CertificateAdminController::class, 'endorsementGenerationProgress'])->name('admin.certs.endorsements.generation-progress');
         Route::get('/certificates/endorsements/{id}/uploaded-pdf', [CertificateAdminController::class, 'viewEndorsementTemplate'])->name('admin.certs.endorsements.template.view');
         Route::get('/certificates/endorsements/{id}/preview-pdf', [CertificateAdminController::class, 'previewEndorsement'])->name('admin.certs.endorsements.preview');
         Route::get('/certificates/endorsements/{id}/participants/download', [CertificateAdminController::class, 'downloadEndorsementParticipants'])->name('admin.certs.endorsements.participants.download');

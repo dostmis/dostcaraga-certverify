@@ -177,7 +177,13 @@ Step 4: Regional Director reviews
   ├── Previews template PDF with sample stamp
   │
   ▼
-Step 5: RD approves → certificates generated
+Step 5: RD approves → generation is queued (asynchronous)
+  │
+  ├── The request returns immediately; the package moves to `generating`
+  ├── One GenerateCertificateJob per participant, dispatched as a Bus batch
+  ├── The template is normalized ONCE in the parent, never per job
+  ├── Jobs are serialized by a global lock so codes cannot collide
+  ├── The approvals view polls progress ("Generating 47 of 120")
   │
   ├── Each participant gets a unique certificate_code:
   │   {YEAR}-{PROGRAM}-{ACRONYM}-{BATCH}-{SEQ}
@@ -192,14 +198,28 @@ Step 5: RD approves → certificates generated
   ├── Certificates linked to recipient accounts (if matched)
   │
   ▼
-Step 6: Emails queued and sent
+Step 6: Emails queued and sent (only if EVERY certificate succeeded)
   │
   ├── For dormant recipients: email includes claim link
   ├── For claimed recipients: email includes dashboard link
   ├── For no recipient: email includes certificate only
   │
   └── Delivery status tracked: queued → sent / failed / skipped
+
+  ✗ On any failure: the whole package rolls back
+      ├── Every certificate row and both PDFs for the endorsement deleted
+      ├── Remaining jobs cancelled
+      ├── Status returns to `endorsed` with `generation_error` recorded
+      ├── No emails sent — they are queued in the batch's then() callback
+      └── Recovery: the RD clicks Approve again. There is no retry button,
+          because the package is back in its exact pre-approval state.
 ```
+
+> **A queue worker is mandatory.** Certificate generation now happens on the
+> queue, so a stopped worker means certificates are never generated at all and
+> approvals sit in `generating` indefinitely. Previously a stopped worker only
+> delayed emails. Confirm the worker is running and supervised in every
+> environment, and alert on a stalled queue.
 
 ### Direct RD Generation
 
@@ -462,6 +482,7 @@ certificate_endorsements
 | Status | Meaning |
 |--------|---------|
 | `endorsed` | Submitted by organizer, awaiting RD |
+| `generating` | Approved; certificates being generated on the queue |
 | `rd_approved` | RD approved, certificates generated |
 | `rd_rejected` | RD rejected with reason |
 
@@ -472,6 +493,7 @@ certificate_endorsements
 | `pending` | Submitted, not yet processed |
 | `done` | Exported by organizer |
 | `endorsed` | Endorsed upward |
+| `generating` | Generation batch in flight |
 | `rd_approved` | Finalized by RD |
 
 ---
@@ -487,7 +509,8 @@ certificate_endorsements
 | `/admin/certificates/endorse` | Unit Sup, Organizer | Endorse to RD |
 | `/admin/certificates/matching-review` | Unit Sup, Organizer | Match review screen |
 | `/admin/certificates/approvals` | All staff | Endorsement queue |
-| `/admin/certificates/endorsements/{id}/approve` | RD | Approve & generate |
+| `/admin/certificates/endorsements/{id}/approve` | RD | Approve & queue generation |
+| `/admin/certificates/endorsements/{id}/generation-progress` | RD | JSON generation progress |
 | `/admin/participant-intakes` | All staff | Intake management |
 | `/admin/users` | RD | User management |
 | `/admin/analytics` | RD, Organizer | Analytics dashboard |

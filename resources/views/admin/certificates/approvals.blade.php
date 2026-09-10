@@ -255,6 +255,72 @@
       border: 1px solid #fca5a5;
     }
 
+    .rda-badge-generating {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #93c5fd;
+    }
+
+    .rda-progress {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border: 1px solid #bfdbfe;
+      border-radius: 14px;
+      background: #f8fbff;
+    }
+
+    .rda-progress-label {
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #1d4ed8;
+    }
+
+    .rda-progress-track {
+      height: 10px;
+      border-radius: 999px;
+      background: #dbeafe;
+      overflow: hidden;
+    }
+
+    .rda-progress-bar {
+      height: 100%;
+      width: 0;
+      border-radius: 999px;
+      background: #2563eb;
+      transition: width 0.4s ease;
+    }
+
+    .rda-progress-note {
+      margin: 10px 0 0;
+      font-size: 12px;
+      color: #475569;
+    }
+
+    .rda-failure {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border: 1px solid #fca5a5;
+      border-radius: 14px;
+      background: #fef2f2;
+      color: #7f1d1d;
+      font-size: 13px;
+    }
+
+    .rda-failure strong {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 900;
+    }
+
+    .rda-failure code {
+      display: block;
+      margin-top: 6px;
+      word-break: break-word;
+      font-size: 12px;
+      color: #991b1b;
+    }
+
     .rda-training {
       margin: 10px 0 0;
       font-size: clamp(24px, 4.6vw, 30px);
@@ -619,6 +685,12 @@
       </div>
     @endif
 
+    @if (session('info'))
+      <div class="rda-alert-wrap">
+        <div class="rda-alert">{{ session('info') }}</div>
+      </div>
+    @endif
+
     @if ($errors->any())
       <div class="rda-alert-wrap">
         <div class="rda-alert rda-alert-error">
@@ -662,12 +734,24 @@
         @forelse ($pendingEndorsements as $endorsement)
           @php
             $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
+            $isGenerating = $endorsement->status === \App\Models\CertificateEndorsement::STATUS_GENERATING;
+            $progress = $endorsement->generation_progress ?? null;
+            // A recorded error on an `endorsed` row means the last run failed
+            // and rolled back. There is no separate failed status to render:
+            // the package is approvable again and this is a decoration on it.
+            $rolledBackError = (! $isGenerating && !empty($endorsement->generation_error))
+              ? $endorsement->generation_error
+              : null;
           @endphp
           <article class="rda-card">
             <div class="rda-card-body">
               <div class="rda-card-head">
                 <div>
-                  <span class="rda-badge rda-badge-pending">Pending Approval</span>
+                  @if ($isGenerating)
+                    <span class="rda-badge rda-badge-generating">Generating</span>
+                  @else
+                    <span class="rda-badge rda-badge-pending">Pending Approval</span>
+                  @endif
                   <h2 class="rda-training">{{ $payload['training_title'] ?? 'Untitled Training' }}</h2>
                   <p class="rda-office">{{ $payload['issuing_office'] ?? 'Unspecified Office' }}</p>
                 </div>
@@ -712,6 +796,37 @@
                 <div class="rda-warning">{{ $endorsement->participants_preview_error }}</div>
               @endif
 
+              @if ($isGenerating)
+                @php
+                  $processed = (int) ($progress['processed'] ?? 0);
+                  $total = (int) ($progress['total'] ?? ($endorsement->participants_count ?? 0));
+                  $percent = $total > 0 ? min(100, round(($processed / $total) * 100)) : 0;
+                @endphp
+                <div
+                  class="rda-progress"
+                  data-generation-progress
+                  data-endorsement-id="{{ $endorsement->id }}"
+                  data-progress-url="{{ route('admin.certs.endorsements.generation-progress', ['id' => $endorsement->id]) }}"
+                >
+                  <p class="rda-progress-label" data-progress-text>
+                    Generating {{ number_format($processed) }} of {{ number_format($total) }} certificates
+                  </p>
+                  <div class="rda-progress-track">
+                    <div class="rda-progress-bar" data-progress-bar style="width: {{ $percent }}%"></div>
+                  </div>
+                  <p class="rda-progress-note">
+                    You can leave this page. Emails are queued only after every certificate is generated.
+                    If any one fails, the whole package is rolled back and returns here for re-approval.
+                  </p>
+                </div>
+              @elseif ($rolledBackError)
+                <div class="rda-failure">
+                  <strong>The last generation attempt failed and was rolled back.</strong>
+                  No certificates were issued and no emails were sent. You can approve this package again.
+                  <code>{{ $rolledBackError }}</code>
+                </div>
+              @endif
+
               <div class="rda-actions">
                 @if (!empty($endorsement->template_pdf_path))
                   <a class="rda-action rda-action-secondary" target="_blank" rel="noopener" href="{{ route('admin.certs.endorsements.template.view', ['id' => $endorsement->id]) }}">
@@ -725,12 +840,16 @@
                   </a>
                 @endif
 
-                <form method="POST" action="{{ route('admin.certs.endorsements.approve', ['id' => $endorsement->id]) }}" onsubmit="return confirm('Are you sure you want to approve this certificate package and generate the certificates?')">
-                  @csrf
-                  <button type="submit" class="rda-action rda-action-primary" {{ !($endorsement->participants_review_ready ?? false) ? 'disabled' : '' }}>
-                    Approve &amp; Generate
-                  </button>
-                </form>
+                @if ($isGenerating)
+                  <button type="button" class="rda-action rda-action-primary" disabled>Generating&hellip;</button>
+                @else
+                  <form method="POST" action="{{ route('admin.certs.endorsements.approve', ['id' => $endorsement->id]) }}" onsubmit="return confirm('Are you sure you want to approve this certificate package and generate the certificates?')">
+                    @csrf
+                    <button type="submit" class="rda-action rda-action-primary" {{ !($endorsement->participants_review_ready ?? false) ? 'disabled' : '' }}>
+                      Approve &amp; Generate
+                    </button>
+                  </form>
+                @endif
 
                 @if (!empty($endorsement->participants_file_path))
                   <a class="rda-action rda-action-secondary" href="{{ route('admin.certs.endorsements.participants.download', ['id' => $endorsement->id]) }}">
@@ -740,7 +859,11 @@
                   <button type="button" class="rda-action rda-action-secondary" disabled>No Participants File</button>
                 @endif
 
-                <button type="button" class="rda-action rda-action-danger" onclick="openRejectModal({{ $endorsement->id }})">Reject</button>
+                @if ($isGenerating)
+                  <button type="button" class="rda-action rda-action-danger" disabled>Reject</button>
+                @else
+                  <button type="button" class="rda-action rda-action-danger" onclick="openRejectModal({{ $endorsement->id }})">Reject</button>
+                @endif
               </div>
             </div>
           </article>
@@ -831,5 +954,69 @@
     document.getElementById('rejectModal').addEventListener('click', function(e) {
       if (e.target === this) closeRejectModal();
     });
+
+    // Poll generation progress for in-flight packages only, and stop on any
+    // terminal state so an idle open tab does not keep hitting the server.
+    (function () {
+      const POLL_MS = 4000;
+      const panels = Array.from(document.querySelectorAll('[data-generation-progress]'));
+      if (panels.length === 0) {
+        return;
+      }
+
+      let stopped = false;
+
+      async function poll(panel) {
+        const response = await fetch(panel.dataset.progressUrl, {
+          headers: { 'Accept': 'application/json' },
+          credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+          return false;
+        }
+
+        const data = await response.json();
+        const total = Number(data.total) || 0;
+        const processed = Number(data.processed) || 0;
+        const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+
+        const text = panel.querySelector('[data-progress-text]');
+        const bar = panel.querySelector('[data-progress-bar]');
+        if (text) {
+          text.textContent = 'Generating ' + processed.toLocaleString()
+            + ' of ' + total.toLocaleString() + ' certificates';
+        }
+        if (bar) {
+          bar.style.width = percent + '%';
+        }
+
+        // Terminal: either the package is approved, or it rolled back to the
+        // approval queue. Either way the row itself has changed, so reload
+        // rather than trying to re-render it in place.
+        return data.status !== 'generating' || data.finished === true;
+      }
+
+      async function tick() {
+        if (stopped) {
+          return;
+        }
+
+        try {
+          const results = await Promise.all(panels.map(poll));
+          if (results.some(Boolean)) {
+            stopped = true;
+            window.location.reload();
+            return;
+          }
+        } catch (e) {
+          // Transient network error: keep polling rather than freezing the bar.
+        }
+
+        window.setTimeout(tick, POLL_MS);
+      }
+
+      window.setTimeout(tick, POLL_MS);
+    })();
   </script>
 </x-admin-layout>

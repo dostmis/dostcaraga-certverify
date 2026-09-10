@@ -1,5 +1,25 @@
 # Blockchain Anchoring for CERTiFY — Hedera Consensus Service (HCS)
 
+> [!WARNING]
+> **REMOVED — 3 September 2026. This feature is no longer part of CERTiFY.**
+>
+> Hedera anchoring was removed in full: the `HederaService`, the anchoring job,
+> the `hedera:backfill` and `hedera:create-topic` commands, the Node bridge in
+> `hedera/`, the `services.hedera` config block, and the blockchain panel on the
+> public verification page. The app **never** displays blockchain status in any
+> form — no "BLOCKCHAIN VERIFIED", "BLOCKCHAIN ANCHORED", or "BLOCKCHAIN
+> MISMATCH".
+>
+> **Why this document is retained:** the eight `blockchain_*` columns on the
+> `certificates` table still exist and still hold data for certificates anchored
+> before removal. This is the only remaining explanation of what those columns
+> mean. See `HEDERA_REMOVAL_PLAN.md` for the removal record and the deferred
+> plan to drop them.
+>
+> Everything below describes the system **as it was**. None of the setup,
+> operation, or troubleshooting steps apply any more — the code they reference
+> no longer exists.
+
 > Tamper-evident certificate verification for DOST Caraga, backed by the
 > Hedera public ledger. This document explains **what** was built, **why**,
 > **how** it works, and **how to operate** it.

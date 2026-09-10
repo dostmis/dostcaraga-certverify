@@ -26,17 +26,34 @@ return new class extends Migration {
                 }
             });
 
-        // 3) Make it NOT NULL
-        DB::statement('ALTER TABLE certificates ALTER COLUMN public_token SET NOT NULL');
+        // 3) Make it NOT NULL and 4) add the UNIQUE constraint.
+        //
+        // SQLite cannot ALTER a column to NOT NULL or add a table constraint
+        // in place, so the test driver gets the unique index only and leaves
+        // the column nullable. Production is Postgres and takes both.
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE certificates ALTER COLUMN public_token SET NOT NULL');
+            DB::statement('ALTER TABLE certificates ADD CONSTRAINT certificates_public_token_unique UNIQUE (public_token)');
 
-        // 4) Add UNIQUE constraint
-        DB::statement('ALTER TABLE certificates ADD CONSTRAINT certificates_public_token_unique UNIQUE (public_token)');
+            return;
+        }
+
+        Schema::table('certificates', function (Blueprint $table) {
+            $table->unique('public_token', 'certificates_public_token_unique');
+        });
     }
 
     public function down(): void
     {
         // Drop constraint first, then column
-        DB::statement('ALTER TABLE certificates DROP CONSTRAINT IF EXISTS certificates_public_token_unique');
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE certificates DROP CONSTRAINT IF EXISTS certificates_public_token_unique');
+        } else {
+            Schema::table('certificates', function (Blueprint $table) {
+                $table->dropUnique('certificates_public_token_unique');
+            });
+        }
+
         Schema::table('certificates', function (Blueprint $table) {
             $table->dropColumn('public_token');
         });

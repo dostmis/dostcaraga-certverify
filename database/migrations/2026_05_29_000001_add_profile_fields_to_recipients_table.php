@@ -6,8 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Skipped on a fresh database.
+     *
+     * This migration's timestamp sorts *before*
+     * 2026_06_01_000001_create_recipients_table, so on a fresh database the
+     * table does not exist yet. Already-migrated environments ran this in the
+     * order it was authored; new ones get these columns from
+     * 2026_09_04_000003_backfill_recipient_profile_columns instead.
+     */
     public function up(): void
     {
+        if (! Schema::hasTable('recipients')) {
+            return;
+        }
+
         Schema::table('recipients', function (Blueprint $table) {
             $table->string('block_lot_purok')->nullable()->after('contact_number');
             $table->string('region')->nullable()->after('block_lot_purok');
@@ -31,6 +44,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasTable('recipients')) {
+            return;
+        }
+
         Schema::table('recipients', function (Blueprint $table) {
             $table->dropColumn([
                 'block_lot_purok',

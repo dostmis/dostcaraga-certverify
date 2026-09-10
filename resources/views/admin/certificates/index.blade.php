@@ -527,6 +527,12 @@
       border-color: #a5f3fc;
     }
 
+    .status-generating {
+      color: #1d4ed8;
+      background: #eff6ff;
+      border-color: #93c5fd;
+    }
+
     .status-rd-approved {
       color: #166534;
       background: #ecfdf5;
@@ -927,6 +933,8 @@
                       <td>
                         @if ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_ENDORSED)
                           <span class="cert-status status-endorsed">Pending Approval</span>
+                        @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_GENERATING)
+                          <span class="cert-status status-generating">Generating</span>
                         @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_APPROVED)
                           <span class="cert-status status-rd-approved">Approved</span>
                         @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_REJECTED)
@@ -938,6 +946,10 @@
                       <td>
                         @if ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_APPROVED)
                           {{ $endorsement->generated_count }} generated
+                        @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_GENERATING)
+                          Generating in background&hellip;
+                        @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_ENDORSED && $endorsement->generation_error)
+                          Last attempt failed &mdash; rolled back
                         @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_REJECTED && $endorsement->rejection_reason)
                           {{ \Illuminate\Support\Str::limit($endorsement->rejection_reason, 80) }}
                         @else

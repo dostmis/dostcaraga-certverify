@@ -35,6 +35,7 @@ class Certificate extends Model
         'signature_offset_x',
         'email',
         'recipient_id',
+        'certificate_endorsement_id',
         'gender',
         'age',
         'block_lot_purok',
@@ -108,6 +109,14 @@ class Certificate extends Model
     public function recipient(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Recipient::class);
+    }
+
+    /**
+     * The endorsement package this certificate was generated from, if any.
+     */
+    public function endorsement(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(CertificateEndorsement::class, 'certificate_endorsement_id');
     }
 
     public function hasRecipient(): bool

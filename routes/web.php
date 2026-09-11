@@ -42,6 +42,8 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
         Route::post('/certificates/live-preview', [CertificateAdminController::class, 'livePreview'])->name('admin.certs.live-preview');
         Route::post('/certificates/preview', [CertificateAdminController::class, 'preview'])->name('admin.certs.preview');
         Route::post('/certificates/preview-all', [CertificateAdminController::class, 'previewAll'])->name('admin.certs.preview-all');
+        // Endorsers see their own packages; the controller enforces ownership.
+        Route::get('/certificates/endorsements/{id}/delivery', [CertificateAdminController::class, 'endorsementDelivery'])->name('admin.certs.endorsements.delivery');
     });
 
     Route::middleware('role:regional_director,organizer')->group(function () {

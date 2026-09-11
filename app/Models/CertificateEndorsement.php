@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 
 class CertificateEndorsement extends Model
@@ -44,5 +45,13 @@ class CertificateEndorsement extends Model
     public function submitter(): BelongsTo
     {
         return $this->belongsTo(User::class, 'submitted_by');
+    }
+
+    /**
+     * Certificates generated when this package was approved.
+     */
+    public function certificates(): HasMany
+    {
+        return $this->hasMany(Certificate::class, 'certificate_endorsement_id');
     }
 }

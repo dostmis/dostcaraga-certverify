@@ -948,6 +948,7 @@
                     <th>Submitted</th>
                     <th>Office</th>
                     <th>Status</th>
+                    <th>Delivery</th>
                     <th>Details</th>
                   </tr>
                 </thead>
@@ -975,6 +976,25 @@
                         @endif
                       </td>
                       <td>
+                        @php
+                          $deliveryCounts = (array) ($endorsement->delivery_counts ?? []);
+                        @endphp
+                        @if ($endorsement->status !== \App\Models\CertificateEndorsement::STATUS_RD_APPROVED)
+                          &mdash;
+                        @elseif ($deliveryCounts === [])
+                          <span class="cert-muted">Not tracked yet</span>
+                        @else
+                          <div class="cert-link-row">
+                            @foreach (\App\Support\CertificateDeliveryStatus::outcomes() as $outcome)
+                              @if (($deliveryCounts[$outcome] ?? 0) > 0)
+                                <span class="cert-status {{ \App\Support\CertificateDeliveryStatus::badgeClass($outcome) }}">{{ $deliveryCounts[$outcome] }} {{ strtolower(\App\Support\CertificateDeliveryStatus::label($outcome)) }}</span>
+                              @endif
+                            @endforeach
+                            <a class="cert-mini-btn" href="{{ route('admin.certs.endorsements.delivery', ['id' => $endorsement->id]) }}">View delivery</a>
+                          </div>
+                        @endif
+                      </td>
+                      <td>
                         @if ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_APPROVED)
                           {{ $endorsement->generated_count }} generated
                         @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_REJECTED && $endorsement->rejection_reason)
@@ -996,7 +1016,7 @@
                     </tr>
                   @empty
                     <tr>
-                      <td colspan="6" class="cert-empty">
+                      <td colspan="7" class="cert-empty">
                         <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         No endorsements submitted yet.
                       </td>

@@ -150,6 +150,26 @@ class PsgcController extends Controller
         return $result;
     }
 
+    private function getRegionsFromStatic(): array
+    {
+        $path = resource_path("data/psgc.json");
+        if (!file_exists($path)) return [];
+
+        $raw = json_decode(file_get_contents($path), true);
+        if (!is_array($raw)) return [];
+
+        $result = [];
+        foreach (array_keys($raw) as $index => $regionName) {
+            $result[] = [
+                "name" => $regionName,
+                "psgc_code" => "static-" . ($index + 1),
+            ];
+        }
+
+        usort($result, fn ($a, $b) => strcasecmp($a["name"], $b["name"]));
+        return $result;
+    }
+
     public function regions(): JsonResponse
     {
         $data = Cache::remember('psgc_regions', self::CACHE_TTL, function () {
@@ -167,6 +187,15 @@ class PsgcController extends Controller
             return $result;
         });
 
+        // The upstream service can time out. Use the bundled PSGC snapshot
+        // and replace any previously cached empty outage response.
+        if (count($data) === 0) {
+            $data = $this->getRegionsFromStatic();
+            if (count($data) > 0) {
+                Cache::put("psgc_regions", $data, self::CACHE_TTL);
+            }
+        }
+
         return response()->json($data);
     }
 
@@ -175,6 +204,16 @@ class PsgcController extends Controller
         $regCode = trim((string) $request->query('reg_code', ''));
         if ($regCode === '') {
             return response()->json(['error' => 'reg_code is required'], 422);
+        }
+
+        // Static fallback region codes bypass the unavailable external API.
+        if (str_starts_with($regCode, "static-")) {
+            $regions = Cache::get("psgc_regions", []);
+            foreach ($regions as $region) {
+                if (($region["psgc_code"] ?? "") === $regCode) {
+                    return response()->json($this->getProvincesFromStaticByRegion($region["name"]));
+                }
+            }
         }
 
         $regPrefix = substr($regCode, 0, 2);

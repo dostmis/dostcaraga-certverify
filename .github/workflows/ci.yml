@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: certverify_user
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: certverify_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U certverify_user"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      # phpunit.xml pins DB_CONNECTION=pgsql and DB_DATABASE=certverify_test;
+      # these supply the rest of the connection for the CI Postgres service.
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_USERNAME: certverify_user
+      DB_PASSWORD: secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Certificate generation shells out to Ghostscript, and the layout tests
+      # inspect rendered PDFs with poppler-utils - both are on the server.
+      - name: Install PDF tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ghostscript poppler-utils
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, xml, zip, gd, imagick, bcmath, intl, fileinfo, pgsql, pdo_pgsql
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # Page-rendering tests go through @vite, which needs public/build/manifest.json.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build frontend assets
+        run: npm ci --no-audit --no-fund && npm run build
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Check code style (Pint)
+        run: vendor/bin/pint --test
+        continue-on-error: true
+
+      - name: Run tests
+        run: php artisan test

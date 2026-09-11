@@ -92,15 +92,20 @@ class RegionalDirectorSignatory
         }
 
         $trimmedPath = ltrim($rawPath, '/');
-        if (Storage::disk('public')->exists($trimmedPath)) {
-            return Storage::disk('public')->url($trimmedPath);
-        }
-
+        // A file already sitting under the web root can be linked directly.
         if (is_file(public_path($trimmedPath))) {
             return asset($trimmedPath);
         }
 
-        return null;
+        // Otherwise go through the streaming route. Linking to the `public`
+        // disk URL only works when `public/storage` is symlinked, and that
+        // symlink would also expose the issued certificate PDFs stored
+        // alongside the signature, so it is deliberately not relied on.
+        if (static::resolvedPath() === null) {
+            return null;
+        }
+
+        return route('cert.assets.rd-signature');
     }
 
     public static function viewData(): array

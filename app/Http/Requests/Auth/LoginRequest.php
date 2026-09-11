@@ -57,8 +57,11 @@ class LoginRequest extends FormRequest
 
         if ($user && $user->approval_status !== 'approved') {
             if ($user->approval_status === 'rejected') {
+                $reason = trim((string) $user->rejection_reason);
                 throw ValidationException::withMessages([
-                    'login' => 'Your account request was rejected. Please contact an administrator.',
+                    'login' => $reason !== ''
+                        ? 'Your account request was rejected. Reason: '.$reason
+                        : 'Your account request was rejected. Please contact an administrator.',
                 ]);
             }
 

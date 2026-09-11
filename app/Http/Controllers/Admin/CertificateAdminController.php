@@ -7,12 +7,15 @@ use App\Jobs\AnchorCertificateOnHederaJob;
 use App\Jobs\SendCertificateEmailJob;
 use App\Models\Certificate;
 use App\Models\CertificateEndorsement;
+use App\Models\ParticipantIntake;
+use App\Models\ParticipantIntakeEvent;
 use App\Models\Recipient;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\RecipientMatchingService;
 use App\Support\PdfImageNormalizer;
 use App\Support\RegionalDirectorSignatory;
+use App\Support\TemplateNameBand;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -33,10 +36,63 @@ class CertificateAdminController extends Controller
     private const STANDARD_NAME_POS_Y = 110.0;
     private const STANDARD_NAME_FONT_SIZE = 45.0;
     private const STANDARD_NAME_FONT_FAMILY = 'Times';
+    private const NAME_ALIGNMENTS = ['left', 'center', 'right'];
+    // Long names are scaled down rather than allowed to run past the template's
+    // name band, and only wrap once the smallest legible size still overflows.
+    private const NAME_MIN_FONT_SIZE = 20.0;
+    private const NAME_FIT_STEP_PT = 0.5;
+    private const NAME_LINE_HEIGHT_RATIO = 1.15;
+    // Vertical room a wrapped name may claim above its baseline. All five bundled
+    // templates print "is presented to" ending at 81.3mm and the rule under the
+    // name at 116.3mm, with the baseline at 110mm, so 26mm leaves the block a
+    // couple of millimetres clear of the header text.
+    private const NAME_MAX_ASCENT_MM = 26.0;
+    // Cap height of the name face as a fraction of its point size, used to tell
+    // how far the topmost line actually reaches above its own baseline.
+    private const NAME_CAP_HEIGHT_RATIO = 0.66;
+    // Caption font and line spacing shrink together so a long caption stays
+    // inside the band between the name and the signature block.
+    private const CAPTION_FONT_SIZE = 13.2;
+    private const CAPTION_LINE_HEIGHT = 5.2;
+    private const CAPTION_MIN_FONT_SIZE = 8.0;
+    private const CAPTION_FIT_STEP_PT = 0.4;
+    // Gap between the name baseline and the first caption line.
+    private const CAPTION_TOP_GAP = 11.0;
+    // How far the caption is inset inside the name's usable text area, each side.
+    private const CAPTION_SIDE_INSET = 10.0;
+    // Side margins of the usable text area, in mm. Equal by default; a design
+    // with artwork down one edge overrides them per certificate.
+    private const DEFAULT_NAME_MARGIN_MM = 30;
+    private const MAX_NAME_MARGIN_MM = 140;
+    private const MIN_NAME_BAND_MM = 60;
+    // Upper bound on a whole-batch preview. Generating the PDF is cheap (the
+    // template and the placeholder QR are shared across pages), but *displaying*
+    // it is not: the templates carry a full-bleed 2000x1414 ICC background that a
+    // viewer re-rasterises per page at roughly 0.25-0.65s, and a form XObject is
+    // not cached across pages. At 500 that is minutes of rendering and well over
+    // 100MB of bitmaps in the tab. A preview only has to prove the layout is
+    // right, so it is capped at a couple of dozen pages and the response reports
+    // the true total for the UI to show.
+    private const PREVIEW_ALL_MAX_PARTICIPANTS = 25;
+    // Breathing room kept between the caption and whatever sits below it.
+    private const CAPTION_BOTTOM_GAP = 4.0;
+    // Nudge offsets are captured in CSS pixels (1/96 inch) because that is the
+    // unit the preview toolbar exposes; FPDI positions everything in mm.
+    private const CSS_PIXEL_IN_MM = 25.4 / 96;
+    private const POINT_IN_MM = 25.4 / 72;
+    private const MAX_OFFSET_PX = 200;
     private const NOT_APPLICABLE = 'Not Applicable';
     private const CUSTOM_DOST_PROJECT_OPTION = 'Others';
     private const PARTICIPANTS_FILE_MAX_KB = 2048;
     private const CERTIFICATE_TEMPLATE_MAX_KB = 51200;
+
+    /**
+     * Request-scoped memo for the Regional Director signature lookups, which are
+     * otherwise repeated for every participant of a batch.
+     *
+     * @var array{path?: string|null, dimensions?: array<string, array{0: float, 1: float}>}
+     */
+    private array $regionalDirectorESignMemo = [];
 
     public function index(Request $request)
     {
@@ -262,6 +318,19 @@ class CertificateAdminController extends Controller
         $customDostProjectOptionLabel = $this->customDostProjectOptionLabel();
         $pillars = $this->pillars();
         $isRegionalDirector = $this->isRegionalDirector($user);
+        $layoutOffsetLimitPx = self::MAX_OFFSET_PX;
+        $nameMarginLimitMm = self::MAX_NAME_MARGIN_MM;
+        $defaultNameMarginMm = self::DEFAULT_NAME_MARGIN_MM;
+
+        $intakeEvents = ParticipantIntakeEvent::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->get(['id', 'event_name', 'is_active', 'created_at']);
+        if ($isRegionalDirector) {
+            $intakeEvents = ParticipantIntakeEvent::query()
+                ->orderByDesc('created_at')
+                ->get(['id', 'event_name', 'is_active', 'user_id', 'created_at']);
+        }
 
         return view('admin.certificates.create', compact(
             'defaults',
@@ -282,8 +351,36 @@ class CertificateAdminController extends Controller
             'sscpProgramLabel',
             'customDostProjectOptionLabel',
             'pillars',
-            'isRegionalDirector'
+            'isRegionalDirector',
+            'intakeEvents',
+            'layoutOffsetLimitPx',
+            'nameMarginLimitMm',
+            'defaultNameMarginMm'
         ));
+    }
+
+    public function intakeEventParticipants(Request $request, int $eventId)
+    {
+        $user = $request->user();
+        if (!$this->canPrepareCertificate($user)) {
+            abort(403);
+        }
+
+        $event = ParticipantIntakeEvent::findOrFail($eventId);
+        if (!$this->isRegionalDirector($user) && $event->user_id !== $user->id) {
+            abort(403, 'You can only access your own intake events.');
+        }
+
+        $participants = ParticipantIntake::where('participant_intake_event_id', $eventId)
+            ->where('status', 'pending')
+            ->orderBy('participant_name')
+            ->get(['id', 'participant_name', 'first_name', 'middle_initial', 'last_name', 'email', 'gender', 'age_range', 'region', 'province', 'city_municipality', 'barangay', 'block_lot_purok', 'industry', 'recipient_id']);
+
+        return response()->json([
+            'event_name' => $event->event_name,
+            'count' => $participants->count(),
+            'participants' => $participants,
+        ]);
     }
 
     private function topics(): array
@@ -363,6 +460,42 @@ class CertificateAdminController extends Controller
         Storage::disk('local')->put($localPath, file_get_contents($sourceAbs));
 
         return $localPath;
+    }
+
+    private function storeParticipantsFileForEndorsement(Request $request, array $data, array $participants): string
+    {
+        if ($request->hasFile('participants_file')) {
+            $participantsFile = $request->file('participants_file');
+            $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
+            return $participantsFile->storeAs(
+                'certificate-endorsements/participants',
+                'participants_' . Str::uuid() . '.' . $participantsExt,
+                'local'
+            );
+        }
+
+        $csvPath = 'certificate-endorsements/participants/participants_' . Str::uuid() . '.csv';
+        $handle = fopen('php://temp', 'r+');
+        fputcsv($handle, ['Participant Name', 'Email', 'Gender', 'Age Range', 'Region', 'Province', 'City/Municipality', 'Barangay', 'Block/Lot/Purok', 'Industry']);
+        foreach ($participants as $p) {
+            fputcsv($handle, [
+                $p['name'] ?? '',
+                $p['email'] ?? '',
+                $p['gender'] ?? '',
+                $p['age_range'] ?? ($p['age'] ?? ''),
+                $p['region'] ?? '',
+                $p['province'] ?? '',
+                $p['city_municipality'] ?? '',
+                $p['barangay'] ?? '',
+                $p['block_lot_purok'] ?? '',
+                $p['industry'] ?? '',
+            ]);
+        }
+        rewind($handle);
+        Storage::disk('local')->put($csvPath, stream_get_contents($handle));
+        fclose($handle);
+
+        return $csvPath;
     }
 
     private function automaticCertificateTypeByRecipientType(): array
@@ -501,10 +634,13 @@ class CertificateAdminController extends Controller
             ['name' => 'Promoting Resilient Opportunities for Growth through Smart and Sustainable Communities in the Municipality of San Jose (PROGRESS-San Jose)', 'code' => 'SSCP-2026-03'],
             ['name' => 'Strengthening Smart and Sustainable Governance in PLGU-Surigao del Norte and LGU-Mainit through Digital Transformation and Strategic Roadmapping', 'code' => 'SSCP-2026-04'],
             ['name' => 'Building a Smart and Sustainable City through STI-based Technologies for Tandag City (SMART Tandag: Year 2)', 'code' => 'SSCP-2026-05'],
+            ['name' => 'Others', 'code' => '', 'program_prefix' => '__ALL__', 'label' => $this->customDostProjectOptionLabel()],
         ];
 
         return array_map(function (array $project): array {
-            $project['program_prefix'] = $this->dostProjectProgramPrefix((string) ($project['code'] ?? ''));
+            if (!isset($project['program_prefix'])) {
+                $project['program_prefix'] = $this->dostProjectProgramPrefix((string) ($project['code'] ?? ''));
+            }
 
             return $project;
         }, $projects);
@@ -609,6 +745,17 @@ class CertificateAdminController extends Controller
             Storage::disk('local')->delete($sharedPath);
         }
 
+        if (($data['participant_source'] ?? 'file') === 'intake_link' && !empty($data['intake_event_id'])) {
+            $intakeIds = array_filter(array_column($participants, 'intake_id'));
+            if (!empty($intakeIds)) {
+                ParticipantIntake::whereIn('id', $intakeIds)->update([
+                    'status' => 'rd_approved',
+                    'rd_approved_at' => now(),
+                    'rd_approved_by' => $request->user()->id,
+                ]);
+            }
+        }
+
         $generated = count($generatedCertificates);
 
         return redirect()
@@ -629,22 +776,27 @@ class CertificateAdminController extends Controller
         $matchResults = [];
         $unresolvedCount = 0;
 
+        $isFromIntakeLink = (($data['participant_source'] ?? 'file') === 'intake_link');
+
         foreach ($participants as $i => $participant) {
-            $result = $matchingService->match($participant);
-            $matchResults[$i] = $result;
-            if ($result['recipient_id'] === null) {
-                $unresolvedCount++;
+            if ($isFromIntakeLink && !empty($participant['recipient_id'])) {
+                $matchResults[$i] = [
+                    'recipient_id' => $participant['recipient_id'],
+                    'confidence' => 'intake_linked',
+                    'ambiguous' => false,
+                    'candidates' => [],
+                ];
+            } else {
+                $result = $matchingService->match($participant);
+                $matchResults[$i] = $result;
+                if ($result['recipient_id'] === null) {
+                    $unresolvedCount++;
+                }
             }
         }
 
         if ($unresolvedCount > 0) {
-            $participantsFile = $request->file('participants_file');
-            $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
-            $participantsFilePath = $participantsFile->storeAs(
-                'certificate-endorsements/participants',
-                'participants_' . Str::uuid() . '.' . $participantsExt,
-                'local'
-            );
+            $participantsFilePath = $this->storeParticipantsFileForEndorsement($request, $data, $participants);
 
             $templatePdfPath = $this->storeTemplatePdfForRequest($data, $request, 'certificate-endorsements/templates');
 
@@ -740,14 +892,7 @@ class CertificateAdminController extends Controller
             $participantsFilePath = $pending['participants_file_path'];
             $templatePdfPath = $pending['template_pdf_path'];
         } else {
-            $participantsFile = $request->file('participants_file');
-            $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
-            $participantsFilePath = $participantsFile->storeAs(
-                'certificate-endorsements/participants',
-                'participants_' . Str::uuid() . '.' . $participantsExt,
-                'local'
-            );
-
+            $participantsFilePath = $this->storeParticipantsFileForEndorsement($request, $data, $participants);
             $templatePdfPath = $this->storeTemplatePdfForRequest($data, $request, 'certificate-endorsements/templates');
         }
 
@@ -762,6 +907,17 @@ class CertificateAdminController extends Controller
             'template_pdf_path' => $templatePdfPath,
             'payload' => $payload,
         ]);
+
+        if (($data['participant_source'] ?? 'file') === 'intake_link' && !empty($data['intake_event_id'])) {
+            $intakeIds = array_filter(array_column($participants, 'intake_id'));
+            if (!empty($intakeIds)) {
+                ParticipantIntake::whereIn('id', $intakeIds)->update([
+                    'status' => 'endorsed',
+                    'endorsed_at' => now(),
+                    'endorsed_by' => $user->id,
+                ]);
+            }
+        }
 
         $this->notifyRegionalDirectorMessengerOnEndorsement($endorsement, $user);
         $this->notifyRegionalDirectorTelegramOnEndorsement($endorsement, $user);
@@ -1489,29 +1645,53 @@ SYS;
         $participantName = $this->resolveLivePreviewParticipantName($request);
         $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
         $verifyUrl = $this->buildVerifyUrl((string) Str::uuid());
+        $layoutReport = null;
+        $previewMargins = $this->normalizeNameMargins(
+            $request->input('name_margin_left'),
+            $request->input('name_margin_right')
+        );
 
         try {
             $pdfContent = $this->renderStampedPdf(
                 $sourceAbs,
                 $participantName,
-                self::STANDARD_NAME_POS_X,
+                (float) $previewMargins[0],
                 self::STANDARD_NAME_POS_Y,
                 self::STANDARD_NAME_FONT_SIZE,
                 self::STANDARD_NAME_FONT_FAMILY,
-                true,
+                $this->normalizeNameAlignment($request->input('name_alignment')),
                 $previewCode,
                 $verifyUrl,
                 true,
                 $this->sanitizeCaptionMarkup($request->input('caption_text')),
-                (string) $request->input('caption_alignment', 'center')
+                (string) $request->input('caption_alignment', 'center'),
+                $this->normalizeQrLabelFlag($request->input('qr_show_code')),
+                $this->normalizeQrLabelFlag($request->input('qr_show_link')),
+                nameOffsetPx: $this->normalizeOffsetPx($request->input('name_offset_x')),
+                nameOffsetYPx: $this->normalizeOffsetPx($request->input('name_offset_y')),
+                signatureOffsetPx: $this->normalizeOffsetPx($request->input('signature_offset_x')),
+                layoutReport: $layoutReport,
+                nameMarginRight: $previewMargins[1]
             );
         } catch (\Throwable $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        // The preview is returned as raw PDF bytes, so the fitting result rides
+        // along in headers for the editor to turn into an on-screen warning.
         return response($pdfContent, 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="certificate-live-preview.pdf"',
+            'X-Caption-Overflow' => ($layoutReport['caption']['overflows'] ?? false) ? '1' : '0',
+            'X-Caption-Lines' => (string) ($layoutReport['caption']['lines'] ?? 0),
+            'X-Caption-Max-Lines' => (string) ($layoutReport['caption']['max_lines'] ?? 0),
+            'X-Caption-Font-Size' => (string) round((float) ($layoutReport['caption']['font_size'] ?? 0), 1),
+            'X-Name-Font-Size' => (string) round((float) ($layoutReport['name']['font_size'] ?? 0), 1),
+            'X-Name-Lines' => (string) ($layoutReport['name']['lines'] ?? 0),
+            // Distinguishes "no signatory configured" (fine) from "configured but
+            // the image is missing" (the operator needs to know before printing).
+            'X-Signature-Expected' => RegionalDirectorSignatory::enabled() ? '1' : '0',
+            'X-Signature-Stamped' => ($layoutReport['signature_stamped'] ?? false) ? '1' : '0',
         ]);
     }
 
@@ -1544,16 +1724,22 @@ SYS;
             $pdfContent = $this->renderStampedPdf(
                 $sourceAbs,
                 $first['name'],
-                self::STANDARD_NAME_POS_X,
+                (float) ($data['name_margin_left'] ?? self::DEFAULT_NAME_MARGIN_MM),
                 self::STANDARD_NAME_POS_Y,
                 self::STANDARD_NAME_FONT_SIZE,
                 self::STANDARD_NAME_FONT_FAMILY,
-                true,
+                $data['name_alignment'] ?? 'center',
                 $previewCode,
                 $verifyUrl,
                 true,
                 $data['caption_text'] ?? null,
-                $data['caption_alignment'] ?? 'center'
+                $data['caption_alignment'] ?? 'center',
+                $data['qr_show_code'] ?? true,
+                $data['qr_show_link'] ?? true,
+                nameOffsetPx: $data['name_offset_x'] ?? 0,
+                nameOffsetYPx: $data['name_offset_y'] ?? 0,
+                signatureOffsetPx: $data['signature_offset_x'] ?? 0,
+                nameMarginRight: (float) ($data['name_margin_right'] ?? self::DEFAULT_NAME_MARGIN_MM)
             );
         } catch (\Throwable $e) {
             if ($request->expectsJson()) {
@@ -1571,19 +1757,174 @@ SYS;
         ]);
     }
 
+    /**
+     * Preview every participant's certificate in one document, so whoever is
+     * preparing or endorsing a batch can page through the whole thing before it
+     * is generated rather than trusting a single sample.
+     */
+    public function previewAll(Request $request)
+    {
+        if (!$this->canPrepareCertificate($request->user())) {
+            abort(403, 'You are not allowed to preview certificate requests.');
+        }
+
+        [$data, $participants] = $this->validatedCertificatePayload($request);
+
+        $names = $this->previewParticipantNames($participants);
+        if ($names === []) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Please provide at least one participant.'], 422);
+            }
+
+            return back()->withErrors(['Please provide at least one participant.'])->withInput();
+        }
+
+        if (($data['template_source'] ?? null) === 'custom' && $request->hasFile('certificate_pdf_shared')) {
+            $sourceAbs = $request->file('certificate_pdf_shared')->getRealPath();
+        } else {
+            $sourceAbs = $this->defaultTemplatePathForCertificateType((string) ($data['certificate_type'] ?? ''));
+        }
+
+        $total = count($names);
+        $names = array_slice($names, 0, self::PREVIEW_ALL_MAX_PARTICIPANTS);
+        $layoutReport = null;
+
+        try {
+            $pdfContent = $this->renderStampedPdfForParticipants(
+                $sourceAbs,
+                $this->buildPreviewParticipants($names),
+                (float) ($data['name_margin_left'] ?? self::DEFAULT_NAME_MARGIN_MM),
+                self::STANDARD_NAME_POS_Y,
+                self::STANDARD_NAME_FONT_SIZE,
+                self::STANDARD_NAME_FONT_FAMILY,
+                $data['name_alignment'] ?? 'center',
+                true,
+                $data['caption_text'] ?? null,
+                $data['caption_alignment'] ?? 'center',
+                $data['qr_show_code'] ?? true,
+                $data['qr_show_link'] ?? true,
+                $data['name_offset_x'] ?? 0,
+                $data['signature_offset_x'] ?? 0,
+                $layoutReport,
+                (float) ($data['name_margin_right'] ?? self::DEFAULT_NAME_MARGIN_MM),
+                $data['name_offset_y'] ?? 0
+            );
+        } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+
+            return back()->withErrors([$e->getMessage()])->withInput();
+        }
+
+        return response($pdfContent, 200, $this->previewAllHeaders(
+            'certificate-preview-all-participants.pdf',
+            count($names),
+            $total,
+            $layoutReport
+        ));
+    }
+
+    /**
+     * Preview every participant of a submitted endorsement, for whoever is
+     * reviewing it before approval.
+     */
+    private function previewAllHeaders(string $filename, int $shown, int $total, ?array $layoutReport): array
+    {
+        $shrunk = 0;
+        $overflowing = 0;
+        foreach (($layoutReport['participants'] ?? []) as $row) {
+            if ($row['name_fit']['shrunk'] ?? false) {
+                $shrunk++;
+            }
+            if ($row['caption']['overflows'] ?? false) {
+                $overflowing++;
+            }
+        }
+
+        // The preview opens as a raw PDF in a new tab, so no page of ours runs to
+        // read the counters below. The filename is the one label the viewer does
+        // put on screen, so a truncated batch says so there rather than quietly
+        // looking like the whole list.
+        if ($shown < $total) {
+            $filename = str_replace(
+                '-all-participants',
+                '-first-' . $shown . '-of-' . $total . '-participants',
+                $filename
+            );
+        }
+
+        return [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            // Read by the preparer's browser tab so the counts can be shown
+            // without re-parsing the PDF.
+            'X-Preview-Participants' => (string) $shown,
+            'X-Preview-Total-Participants' => (string) $total,
+            'X-Preview-Truncated' => $shown < $total ? '1' : '0',
+            'X-Preview-Names-Shrunk' => (string) $shrunk,
+            'X-Preview-Captions-Overflowing' => (string) $overflowing,
+        ];
+    }
+
+    /**
+     * Preview pages share one placeholder verification URL: the tokens are not
+     * real, and reusing them means the QR image is rendered once for the whole
+     * batch instead of once per participant.
+     *
+     * @param  list<string>  $names
+     * @return list<array{name: string, code: string, verify_url: string}>
+     */
+    private function buildPreviewParticipants(array $names): array
+    {
+        $verifyUrl = $this->buildVerifyUrl((string) Str::uuid());
+
+        return array_map(fn (string $name) => [
+            'name' => $name,
+            'code' => 'PREVIEW-' . strtoupper(Str::random(6)),
+            'verify_url' => $verifyUrl,
+        ], $names);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $participants
+     * @return list<string>
+     */
+    private function previewParticipantNames(array $participants): array
+    {
+        $names = [];
+        foreach ($participants as $participant) {
+            $name = trim((string) ($participant['name'] ?? ''));
+            if ($name !== '') {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
     private function validatedCertificatePayload(Request $request): array
     {
         $input = $request->all();
         if (empty($input['template_source'])) {
             $input['template_source'] = $request->hasFile('certificate_pdf_shared') ? 'custom' : 'default';
         }
+        if (empty($input['participant_source'])) {
+            $input['participant_source'] = $request->hasFile('participants_file') ? 'file' : 'intake_link';
+        }
         $automaticCertificateType = $this->automaticCertificateTypeByRecipientType()[(string) ($input['recipient_type'] ?? '')] ?? null;
         if ($automaticCertificateType !== null) {
             $input['certificate_type'] = $automaticCertificateType;
         }
 
+        $participantsFileRules = ($input['participant_source'] === 'file')
+            ? ['required', 'file', 'mimes:csv,txt,xlsx', 'max:' . self::PARTICIPANTS_FILE_MAX_KB]
+            : ['nullable', 'file', 'mimes:csv,txt,xlsx', 'max:' . self::PARTICIPANTS_FILE_MAX_KB];
+
         $validator = Validator::make($input, [
             'training_title' => ['required', 'string', 'max:255'],
+            'participant_source' => ['required', 'in:intake_link,file'],
+            'intake_event_id' => ['required_if:participant_source,intake_link', 'nullable', 'integer', 'exists:participant_intake_events,id'],
             'activity_type' => ['required', Rule::in($this->activityTypes())],
             'activity_type_other' => ['exclude_unless:activity_type,Others', 'required', 'string', 'max:255', 'regex:/.*\S.*/'],
             'certificate_type' => ['required', Rule::in($this->certificateTypes())],
@@ -1608,11 +1949,19 @@ SYS;
             'training_budget' => ['nullable', 'numeric', 'min:0'],
             'expected_number_of_participants' => ['nullable', 'integer', 'min:1'],
             'issuing_office' => ['required', 'string', 'max:255'],
-            'participants_file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:' . self::PARTICIPANTS_FILE_MAX_KB],
+            'participants_file' => $participantsFileRules,
             'template_source' => ['required', 'in:default,custom'],
             'certificate_pdf_shared' => ['required_if:template_source,custom', 'file', 'mimes:pdf', 'max:' . self::CERTIFICATE_TEMPLATE_MAX_KB],
             'caption_text' => ['nullable', 'string'],
             'caption_alignment' => ['nullable', 'string', 'in:left,center,right,justify'],
+            'name_alignment' => ['nullable', 'string', Rule::in(self::NAME_ALIGNMENTS)],
+            'qr_show_code' => ['nullable', 'boolean'],
+            'qr_show_link' => ['nullable', 'boolean'],
+            'name_margin_left' => ['nullable', 'integer', 'between:0,' . self::MAX_NAME_MARGIN_MM],
+            'name_margin_right' => ['nullable', 'integer', 'between:0,' . self::MAX_NAME_MARGIN_MM],
+            'name_offset_x' => ['nullable', 'integer', 'between:-' . self::MAX_OFFSET_PX . ',' . self::MAX_OFFSET_PX],
+            'name_offset_y' => ['nullable', 'integer', 'between:-' . self::MAX_OFFSET_PX . ',' . self::MAX_OFFSET_PX],
+            'signature_offset_x' => ['nullable', 'integer', 'between:-' . self::MAX_OFFSET_PX . ',' . self::MAX_OFFSET_PX],
         ], [
             'participants_file.uploaded' => 'The participants file failed to upload due to a server upload limit. Please reduce file size and try again.',
             'participants_file.max' => 'The participants file must not be greater than ' . (int) floor(self::PARTICIPANTS_FILE_MAX_KB / 1024) . ' MB.',
@@ -1624,6 +1973,16 @@ SYS;
 
         $data = $validator->validate();
         $data['caption_text'] = $this->sanitizeCaptionMarkup($data['caption_text'] ?? null);
+        $data['name_alignment'] = $this->normalizeNameAlignment($data['name_alignment'] ?? null);
+        $data['qr_show_code'] = $this->normalizeQrLabelFlag($data['qr_show_code'] ?? null);
+        $data['qr_show_link'] = $this->normalizeQrLabelFlag($data['qr_show_link'] ?? null);
+        $data['name_offset_x'] = $this->normalizeOffsetPx($data['name_offset_x'] ?? null);
+        $data['name_offset_y'] = $this->normalizeOffsetPx($data['name_offset_y'] ?? null);
+        $data['signature_offset_x'] = $this->normalizeOffsetPx($data['signature_offset_x'] ?? null);
+        [$data['name_margin_left'], $data['name_margin_right']] = $this->normalizeNameMargins(
+            $data['name_margin_left'] ?? null,
+            $data['name_margin_right'] ?? null
+        );
         $automaticCertificateType = $this->automaticCertificateTypeByRecipientType()[$data['recipient_type']] ?? null;
         if ($automaticCertificateType !== null) {
             $data['certificate_type'] = $automaticCertificateType;
@@ -1706,6 +2065,14 @@ SYS;
             'training_title' => $data['training_title'],
             'caption_text' => $data['caption_text'] ?? null,
             'caption_alignment' => $data['caption_alignment'] ?? 'center',
+            'name_alignment' => $data['name_alignment'] ?? 'center',
+            'qr_show_code' => $data['qr_show_code'] ?? true,
+            'qr_show_link' => $data['qr_show_link'] ?? true,
+            'name_margin_left' => $data['name_margin_left'] ?? self::DEFAULT_NAME_MARGIN_MM,
+            'name_margin_right' => $data['name_margin_right'] ?? self::DEFAULT_NAME_MARGIN_MM,
+            'name_offset_x' => $data['name_offset_x'] ?? 0,
+            'name_offset_y' => $data['name_offset_y'] ?? 0,
+            'signature_offset_x' => $data['signature_offset_x'] ?? 0,
             'activity_type' => $data['activity_type'],
             'certificate_type' => $data['certificate_type'],
             'recipient_type' => $data['recipient_type'],
@@ -1763,6 +2130,14 @@ SYS;
                 'training_title' => $payload['training_title'] ?? '',
                 'caption_text' => $payload['caption_text'] ?? null,
                 'caption_alignment' => $payload['caption_alignment'] ?? 'center',
+                'name_alignment' => $this->normalizeNameAlignment($payload['name_alignment'] ?? null),
+                'qr_show_code' => $this->normalizeQrLabelFlag($payload['qr_show_code'] ?? null),
+                'qr_show_link' => $this->normalizeQrLabelFlag($payload['qr_show_link'] ?? null),
+                'name_margin_left' => $this->normalizeMarginMm($payload['name_margin_left'] ?? null),
+                'name_margin_right' => $this->normalizeMarginMm($payload['name_margin_right'] ?? null),
+                'name_offset_x' => $this->normalizeOffsetPx($payload['name_offset_x'] ?? null),
+                'name_offset_y' => $this->normalizeOffsetPx($payload['name_offset_y'] ?? null),
+                'signature_offset_x' => $this->normalizeOffsetPx($payload['signature_offset_x'] ?? null),
                 'activity_type' => $payload['activity_type'] ?? null,
                 'certificate_type' => $payload['certificate_type'] ?? null,
                 'recipient_type' => $payload['recipient_type'] ?? null,
@@ -1788,14 +2163,20 @@ SYS;
             $this->stampCertificatePdf(
                 $cert,
                 $sourcePath,
-                self::STANDARD_NAME_POS_X,
+                (float) $cert->name_margin_left,
                 self::STANDARD_NAME_POS_Y,
                 self::STANDARD_NAME_FONT_SIZE,
                 self::STANDARD_NAME_FONT_FAMILY,
-                true,
+                (string) $cert->name_alignment,
                 $applyRegionalDirectorESign,
                 $payload['caption_text'] ?? null,
-                $payload['caption_alignment'] ?? 'center'
+                $payload['caption_alignment'] ?? 'center',
+                (bool) $cert->qr_show_code,
+                (bool) $cert->qr_show_link,
+                nameOffsetPx: (int) $cert->name_offset_x,
+                nameOffsetYPx: (int) $cert->name_offset_y,
+                signatureOffsetPx: (int) $cert->signature_offset_x,
+                nameMarginRight: (float) $cert->name_margin_right
             );
 
             // Anchor the certificate hash to Hedera (no-op unless HEDERA_ENABLED
@@ -1903,6 +2284,10 @@ SYS;
 
     private function resolveParticipants(Request $request, array $data): array
     {
+        if (($data['participant_source'] ?? 'file') === 'intake_link' && !empty($data['intake_event_id'])) {
+            return $this->resolveParticipantsFromIntakeEvent((int) $data['intake_event_id'], $request->user());
+        }
+
         if ($request->hasFile('participants_file')) {
             $file = $request->file('participants_file');
             $ext = strtolower($file->getClientOriginalExtension());
@@ -1972,6 +2357,44 @@ SYS;
         }
 
         return array_values($rows);
+    }
+
+    private function resolveParticipantsFromIntakeEvent(int $eventId, ?User $user): array
+    {
+        $event = ParticipantIntakeEvent::find($eventId);
+        if (!$event) {
+            return [];
+        }
+
+        if (!$this->isRegionalDirector($user) && $event->user_id !== $user?->id) {
+            return [];
+        }
+
+        $intakes = ParticipantIntake::where('participant_intake_event_id', $eventId)
+            ->where('status', 'pending')
+            ->orderBy('participant_name')
+            ->get();
+
+        $rows = [];
+        foreach ($intakes as $intake) {
+            $rows[] = [
+                'name' => $intake->participant_name,
+                'email' => $intake->email ?: null,
+                'gender' => $intake->gender ?: null,
+                'age' => null,
+                'age_range' => $intake->age_range ?: null,
+                'block_lot_purok' => $intake->block_lot_purok ?: null,
+                'region' => $intake->region ?: null,
+                'city_municipality' => $intake->city_municipality ?: null,
+                'barangay' => $intake->barangay ?: null,
+                'province' => $intake->province ?: null,
+                'industry' => $intake->industry ?: null,
+                'intake_id' => $intake->id,
+                'recipient_id' => $intake->recipient_id,
+            ];
+        }
+
+        return $rows;
     }
 
     private function parseParticipantFile($file): array
@@ -2366,6 +2789,14 @@ SYS;
             return Certificate::create([
                 'certificate_code' => $code,
                 'participant_name' => $data['participant_name'],
+                'name_alignment' => $this->normalizeNameAlignment($data['name_alignment'] ?? null),
+                'qr_show_code' => $this->normalizeQrLabelFlag($data['qr_show_code'] ?? null),
+                'qr_show_link' => $this->normalizeQrLabelFlag($data['qr_show_link'] ?? null),
+                'name_margin_left' => $this->normalizeMarginMm($data['name_margin_left'] ?? null),
+                'name_margin_right' => $this->normalizeMarginMm($data['name_margin_right'] ?? null),
+                'name_offset_x' => $this->normalizeOffsetPx($data['name_offset_x'] ?? null),
+                'name_offset_y' => $this->normalizeOffsetPx($data['name_offset_y'] ?? null),
+                'signature_offset_x' => $this->normalizeOffsetPx($data['signature_offset_x'] ?? null),
                 'email' => $data['email'] ?? null,
                 'recipient_id' => $data['recipient_id'] ?? null,
                 'gender' => $data['gender'] ?? null,
@@ -2406,10 +2837,16 @@ SYS;
         float $namePosY,
         float $nameFontSize,
         string $nameFontFamily,
-        bool $centerName,
+        string $nameAlignment,
         bool $applyRegionalDirectorESign = false,
         ?string $captionText = null,
-        string $captionAlignment = 'center'
+        string $captionAlignment = 'center',
+        bool $showQrCode = true,
+        bool $showQrLink = true,
+        int $nameOffsetPx = 0,
+        int $signatureOffsetPx = 0,
+        ?float $nameMarginRight = null,
+        int $nameOffsetYPx = 0
     ): void
     {
         $verifyUrl = $this->buildVerifyUrl($cert->public_token);
@@ -2421,12 +2858,18 @@ SYS;
             $namePosY,
             $nameFontSize,
             $nameFontFamily,
-            $centerName,
+            $nameAlignment,
             $cert->certificate_code,
             $verifyUrl,
             $applyRegionalDirectorESign,
             $captionText,
-            $captionAlignment
+            $captionAlignment,
+            $showQrCode,
+            $showQrLink,
+            nameOffsetPx: $nameOffsetPx,
+            nameOffsetYPx: $nameOffsetYPx,
+            signatureOffsetPx: $signatureOffsetPx,
+            nameMarginRight: $nameMarginRight
         );
 
         $stampedRel = 'certificates/stamped/' . $cert->certificate_code . '.pdf';
@@ -2445,125 +2888,338 @@ SYS;
         float $namePosY,
         float $nameFontSize,
         string $nameFontFamily,
-        bool $centerName,
+        string $nameAlignment,
         string $codeText,
         string $verifyUrl,
         bool $applyRegionalDirectorESign = false,
         ?string $captionText = null,
-        string $captionAlignment = 'center'
+        string $captionAlignment = 'center',
+        bool $showQrCode = true,
+        bool $showQrLink = true,
+        int $nameOffsetPx = 0,
+        int $signatureOffsetPx = 0,
+        ?array &$layoutReport = null,
+        ?float $nameMarginRight = null,
+        int $nameOffsetYPx = 0
     ): string
     {
-        $qrPng = QrCode::format('png')->size(220)->margin(1)->generate($verifyUrl);
+        return $this->renderStampedPdfForParticipants(
+            $sourceAbs,
+            [['name' => $participantName, 'code' => $codeText, 'verify_url' => $verifyUrl]],
+            $namePosX,
+            $namePosY,
+            $nameFontSize,
+            $nameFontFamily,
+            $nameAlignment,
+            $applyRegionalDirectorESign,
+            $captionText,
+            $captionAlignment,
+            $showQrCode,
+            $showQrLink,
+            $nameOffsetPx,
+            $signatureOffsetPx,
+            $layoutReport,
+            $nameMarginRight,
+            $nameOffsetYPx
+        );
+    }
 
-        $tmpQr = storage_path('app/tmp_qr_' . Str::uuid() . '.png');
-        @mkdir(dirname($tmpQr), 0777, true);
-        file_put_contents($tmpQr, $qrPng);
-        $temporaryFiles = [$tmpQr];
-        $qrForPdf = PdfImageNormalizer::prepareForFpdf($tmpQr);
-        if ($qrForPdf !== $tmpQr) {
-            $temporaryFiles[] = $qrForPdf;
-        }
+    /**
+     * Stamp one or more participants into a single document: the template pages
+     * are imported once and repeated per participant, which is what makes a
+     * whole-batch preview affordable to render in one request.
+     *
+     * @param  list<array{name: string, code: string, verify_url: string}>  $participants
+     */
+    private function renderStampedPdfForParticipants(
+        string $sourceAbs,
+        array $participants,
+        float $namePosX,
+        float $namePosY,
+        float $nameFontSize,
+        string $nameFontFamily,
+        string $nameAlignment,
+        bool $applyRegionalDirectorESign = false,
+        ?string $captionText = null,
+        string $captionAlignment = 'center',
+        bool $showQrCode = true,
+        bool $showQrLink = true,
+        int $nameOffsetPx = 0,
+        int $signatureOffsetPx = 0,
+        ?array &$layoutReport = null,
+        ?float $nameMarginRight = null,
+        int $nameOffsetYPx = 0
+    ): string
+    {
+        // Populated as the pages are stamped so callers (the live preview, batch
+        // generation) can warn when the text did not fit the space available.
+        // The top-level entries describe the first participant so single-name
+        // callers keep the shape they already read.
+        $layoutReport = [
+            'caption' => null,
+            'name' => null,
+            'signature_stamped' => false,
+            'participants' => [],
+        ];
+
+        $temporaryFiles = [];
+        $qrImages = [];
 
         $pdf = new Fpdi();
+        // Every page is added explicitly from the template, so FPDF's automatic
+        // page break must stay off: without it, an overlong caption spills into
+        // dozens of blank pages instead of being fitted to the page it belongs on.
+        $pdf->SetAutoPageBreak(false);
         $converted = null;
         try {
             $pageCount = $pdf->setSourceFile($sourceAbs);
         } catch (\Throwable $e) {
             $converted = $this->convertPdfWithGhostscript($sourceAbs);
             $pdf = new Fpdi();
+            $pdf->SetAutoPageBreak(false);
             $pageCount = $pdf->setSourceFile($converted);
         }
 
+        // Import each template page once and reuse it for every participant, so
+        // a 200-name batch embeds the artwork once rather than 200 times.
+        $templates = [];
         for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
             $tplId = $pdf->importPage($pageNo);
-            $size = $pdf->getTemplateSize($tplId);
-            $orientation = $size['width'] > $size['height'] ? 'L' : 'P';
-            $pdf->AddPage($orientation, [$size['width'], $size['height']]);
-            $pdf->useTemplate($tplId);
+            $templates[$pageNo] = ['id' => $tplId, 'size' => $pdf->getTemplateSize($tplId)];
+        }
 
-            if ($pageNo === 1) {
-                $pdf->SetFont($nameFontFamily, '', $nameFontSize);
-                $pdf->SetTextColor(0, 0, 0);
-                $nameText = $this->toLatin1($participantName);
-                $nameX = $namePosX;
-                if ($centerName) {
-                    $textWidth = $pdf->GetStringWidth($nameText);
-                    $nameX = max(0, ($size['width'] - $textWidth) / 2);
+        // Where this template already has artwork, so the name can be laid out
+        // around it instead of on top of it. Mapped once per template and
+        // cached, not per participant.
+        $firstPage = $templates[1]['size'] ?? ['width' => 297.0, 'height' => 210.0];
+        $templateInkMap = TemplateNameBand::inkMap(
+            $converted ?? $sourceAbs,
+            (float) $firstPage['width'],
+            (float) $firstPage['height']
+        );
+
+        foreach (array_values($participants) as $participantIndex => $participant) {
+            $participantName = (string) ($participant['name'] ?? '');
+            $codeText = (string) ($participant['code'] ?? '');
+            $verifyUrl = (string) ($participant['verify_url'] ?? '');
+
+            // Rendering a QR costs far more than the rest of the page put
+            // together, so identical verification URLs share one image. Issued
+            // certificates each have their own URL and so are unaffected; a
+            // batch preview passes one placeholder URL and pays for it once.
+            if (!array_key_exists($verifyUrl, $qrImages)) {
+                $qrPng = QrCode::format('png')->size(220)->margin(1)->generate($verifyUrl);
+                $tmpQr = storage_path('app/tmp_qr_' . Str::uuid() . '.png');
+                @mkdir(dirname($tmpQr), 0777, true);
+                file_put_contents($tmpQr, $qrPng);
+                $temporaryFiles[] = $tmpQr;
+                $normalizedQr = PdfImageNormalizer::prepareForFpdf($tmpQr);
+                if ($normalizedQr !== $tmpQr) {
+                    $temporaryFiles[] = $normalizedQr;
                 }
-                $pdf->Text($nameX, $namePosY, $nameText);
+                $qrImages[$verifyUrl] = $normalizedQr;
+            }
+            $qrForPdf = $qrImages[$verifyUrl];
 
-                if ($captionText && trim($captionText) !== '') {
-                    $this->setPdfCaptionFont($pdf, 13.2);
-                    $pdf->SetTextColor(60, 60, 60);
+            $participantReport = ['name' => $participantName, 'caption' => null, 'name_fit' => null];
 
-                    $captionLines = $this->captionMarkupToStyledLines($captionText);
-                    if ($captionLines !== []) {
-                        $captionWidth = max(80.0, $size['width'] - 80.0);
-                        $captionX = max(40.0, ($size['width'] - $captionWidth) / 2);
-                        $captionY = $namePosY + 11.0;
-                        $captionAlign = match ($captionAlignment) {
-                            'left' => 'L',
-                            'right' => 'R',
-                            'justify' => 'J',
-                            default => 'C',
+            for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+                $tplId = $templates[$pageNo]['id'];
+                $size = $templates[$pageNo]['size'];
+                $orientation = $size['width'] > $size['height'] ? 'L' : 'P';
+                $pdf->AddPage($orientation, [$size['width'], $size['height']]);
+                $pdf->useTemplate($tplId);
+
+                if ($pageNo === 1) {
+                    $pdf->SetTextColor(0, 0, 0);
+                    $nameText = $this->toLatin1($participantName);
+                    // $namePosX is the left margin of the usable text area and
+                    // $nameMarginRight the right one. They are equal by default, so
+                    // 'center' resolves to the page centre exactly as before; a
+                    // design with artwork down one edge sets them asymmetrically and
+                    // the name then centres on the clear space instead of the page.
+                    $nameMarginLeft = max(0.0, $namePosX);
+                    $nameMarginRight = max(0.0, $nameMarginRight ?? $namePosX);
+                    $nameBandWidth = max(10.0, $size['width'] - $nameMarginLeft - $nameMarginRight);
+                    // A name wider than the band used to be drawn at a negative X and
+                    // clipped off both edges, so it is fitted to the band first.
+                    // The operator's vertical nudge moves the baseline, so the
+                    // room above it changes with them: nudging the name down
+                    // buys back space for a second line, nudging it up spends it.
+                    $nameNudgeY = $this->offsetPxToMm($nameOffsetYPx);
+                    [$nameSize, $nameLines] = $this->fitNameToBand(
+                        $pdf,
+                        $nameText,
+                        $nameFontFamily,
+                        $nameFontSize,
+                        $nameBandWidth,
+                        $templateInkMap,
+                        $namePosY + $nameNudgeY,
+                        $nameAlignment,
+                        $nameMarginLeft
+                    );
+
+                    $participantReport['name_fit'] = [
+                        'font_size' => $nameSize,
+                        'nominal_font_size' => $nameFontSize,
+                        'lines' => count($nameLines),
+                        'shrunk' => $nameSize < $nameFontSize,
+                    ];
+                    if ($participantIndex === 0) {
+                        $layoutReport['name'] = $participantReport['name_fit'];
+                    }
+
+                    $pdf->SetFont($nameFontFamily, '', $nameSize);
+                    $nameLineHeight = $nameSize * self::POINT_IN_MM * self::NAME_LINE_HEIGHT_RATIO;
+                    // A wrapped name grows upward, keeping its last line on the
+                    // original baseline. Centring the block instead pushed the
+                    // second line down through the rule the templates print under
+                    // the name, and left the caption less room besides.
+                    $nameBaselineY = $namePosY + $nameNudgeY - ((count($nameLines) - 1) * $nameLineHeight);
+                    $nameNudge = $this->offsetPxToMm($nameOffsetPx);
+
+                    foreach ($nameLines as $nameLineIndex => $nameLine) {
+                        $nameWidth = $pdf->GetStringWidth($nameLine);
+                        $nameX = match ($nameAlignment) {
+                            'left' => $nameMarginLeft,
+                            'right' => max(0.0, $size['width'] - $nameMarginRight - $nameWidth),
+                            // Centred within the usable area, which equals the page
+                            // centre whenever the two margins match.
+                            default => max(0.0, $nameMarginLeft + (($nameBandWidth - $nameWidth) / 2)),
                         };
+                        // The nudge is a fine adjustment layered on top of the chosen
+                        // alignment, so operators can align against template artwork.
+                        $nameX += $nameNudge;
+                        $pdf->Text($nameX, $nameBaselineY + ($nameLineIndex * $nameLineHeight), $nameLine);
+                    }
 
-                        $currentCaptionY = $captionY;
-                        foreach ($captionLines as $lineRuns) {
-                            // An empty run list marks a blank line (a double line
-                            // break in the editor) and renders as a vertical gap so
-                            // the PDF mirrors the editor character-for-character.
-                            if ($lineRuns === []) {
-                                $currentCaptionY += 5.2;
-                                continue;
+                    $captionTopY = $namePosY + self::CAPTION_TOP_GAP;
+
+                    if ($captionText && trim($captionText) !== '') {
+                        $captionLines = $this->captionMarkupToStyledLines($captionText);
+                        if ($captionLines !== []) {
+                            // The caption sits inside the same usable text area as the
+                            // name, inset a further 10mm each side. With the default
+                            // 30mm margins that reproduces the previous 40mm inset,
+                            // and on an asymmetric design it keeps the caption off the
+                            // artwork too.
+                            $captionLeft = $nameMarginLeft + self::CAPTION_SIDE_INSET;
+                            $captionRight = $nameMarginRight + self::CAPTION_SIDE_INSET;
+                            $captionWidth = max(80.0, $size['width'] - $captionLeft - $captionRight);
+                            $captionX = max(0.0, $captionLeft);
+                            $captionAlign = match ($captionAlignment) {
+                                'left' => 'L',
+                                'right' => 'R',
+                                'justify' => 'J',
+                                default => 'C',
+                            };
+
+                            // The caption may only use the band between the name and
+                            // whatever sits below it, so it is scaled to that height
+                            // instead of running over the signature or off the page.
+                            $captionMaxHeight = max(
+                                0.0,
+                                $this->captionBottomBound($size, $applyRegionalDirectorESign) - $captionTopY
+                            );
+                            [$captionFontSize, $captionLineHeight, $captionParagraphs, $captionFit] = $this->fitCaptionToBox(
+                                $pdf,
+                                $captionLines,
+                                $captionWidth,
+                                $captionMaxHeight
+                            );
+                            $participantReport['caption'] = $captionFit + ['max_height' => $captionMaxHeight];
+                            if ($participantIndex === 0) {
+                                $layoutReport['caption'] = $participantReport['caption'];
                             }
 
-                            $wrappedLines = $this->buildStyledPdfLines($pdf, $lineRuns, $captionWidth, 13.2);
-                            $currentCaptionY = $this->renderStyledPdfLines(
-                                $pdf,
-                                $wrappedLines,
-                                $captionX,
-                                $currentCaptionY,
-                                $captionWidth,
-                                5.2,
-                                $captionAlign,
-                                13.2
-                            );
+                            $pdf->SetTextColor(60, 60, 60);
+                            $currentCaptionY = $captionTopY;
+                            foreach ($captionParagraphs as $wrappedLines) {
+                                // An empty line list marks a blank line (a double line
+                                // break in the editor) and renders as a vertical gap so
+                                // the PDF mirrors the editor character-for-character.
+                                if ($wrappedLines === []) {
+                                    $currentCaptionY += $captionLineHeight;
+                                    continue;
+                                }
+
+                                $currentCaptionY = $this->renderStyledPdfLines(
+                                    $pdf,
+                                    $wrappedLines,
+                                    $captionX,
+                                    $currentCaptionY,
+                                    $captionWidth,
+                                    $captionLineHeight,
+                                    $captionAlign,
+                                    $captionFontSize
+                                );
+                            }
+                        }
+                    }
+
+                    if ($applyRegionalDirectorESign) {
+                        $stamped = $this->stampRegionalDirectorSignatureBlock($pdf, $size, $signatureOffsetPx);
+                        if ($participantIndex === 0) {
+                            $layoutReport['signature_stamped'] = $stamped;
+                        }
+
+                        if (!$stamped && $participantIndex === 0) {
+                            // The signature silently vanishing is indistinguishable
+                            // from a template that never had one, so it is logged
+                            // rather than left for someone to notice on paper.
+                            Log::warning('Regional Director e-signature was requested but could not be stamped.', [
+                                'configured_path' => RegionalDirectorSignatory::configuredPath(),
+                                'enabled' => RegionalDirectorSignatory::enabled(),
+                            ]);
                         }
                     }
                 }
 
-                if ($applyRegionalDirectorESign) {
-                    $this->stampRegionalDirectorSignatureBlock($pdf, $size);
+                $qrSize = 20;
+                $margin = 10;
+                $x = $size['width'] - $qrSize - $margin;
+
+                $linkText = $this->toLatin1($verifyUrl);
+                $drawCode = $showQrCode && trim($codeText) !== '';
+                $drawLink = $showQrLink && trim($linkText) !== '';
+
+                $textOffset = 4;
+                // Only reserve the space the captions under the QR actually need, so
+                // hiding both lets the QR sit flush in the bottom-right corner.
+                $labelReserve = match (true) {
+                    $drawCode && $drawLink => $textOffset + 9,
+                    $drawCode || $drawLink => $textOffset + 4,
+                    default => 0,
+                };
+                $requiredBottom = $qrSize + $labelReserve;
+                $maxY = $size['height'] - $margin - $requiredBottom;
+                $y = min($size['height'] - $qrSize - $margin, $maxY);
+                $y = max($margin, $y);
+
+                $pdf->Image($qrForPdf, $x, $y, $qrSize, $qrSize);
+
+                $labelY = $y + $qrSize + $textOffset;
+
+                if ($drawCode) {
+                    $pdf->SetFont('Helvetica', '', 8);
+                    $pdf->SetTextColor(0, 0, 0);
+                    $textWidth = $pdf->GetStringWidth($codeText);
+                    $textX = $x + ($qrSize - $textWidth) / 2;
+                    $textX = max($margin, min($textX, $size['width'] - $margin - $textWidth));
+                    $pdf->Text($textX, $labelY, $codeText);
+                    $labelY += 3.5;
+                }
+
+                if ($drawLink) {
+                    $pdf->SetFont('Helvetica', '', 5.5);
+                    $pdf->SetTextColor(0, 0, 0);
+                    $linkWidth = $pdf->GetStringWidth($linkText);
+                    $linkX = max($margin, $size['width'] - $margin - $linkWidth);
+                    $pdf->Text($linkX, $labelY, $linkText);
                 }
             }
 
-            $qrSize = 20;
-            $margin = 10;
-            $x = $size['width'] - $qrSize - $margin;
-
-            $textOffset = 4;
-            $requiredBottom = $qrSize + $textOffset + 9;
-            $maxY = $size['height'] - $margin - $requiredBottom;
-            $y = min($size['height'] - $qrSize - $margin, $maxY);
-            $y = max($margin, $y);
-
-            $pdf->Image($qrForPdf, $x, $y, $qrSize, $qrSize);
-
-            $pdf->SetFont('Helvetica', '', 8);
-            $pdf->SetTextColor(0, 0, 0);
-            $textWidth = $pdf->GetStringWidth($codeText);
-            $textX = $x + ($qrSize - $textWidth) / 2;
-            $textX = max($margin, min($textX, $size['width'] - $margin - $textWidth));
-            $textY = $y + $qrSize + $textOffset;
-            $pdf->Text($textX, $textY, $codeText);
-
-            $linkText = $this->toLatin1($verifyUrl);
-            $pdf->SetFont('Helvetica', '', 5.5);
-            $linkWidth = $pdf->GetStringWidth($linkText);
-            $linkX = max($margin, $size['width'] - $margin - $linkWidth);
-            $linkY = $textY + 3.5;
-            $pdf->Text($linkX, $linkY, $linkText);
+            $layoutReport['participants'][] = $participantReport;
         }
 
         foreach (array_unique($temporaryFiles) as $temporaryFile) {
@@ -2582,6 +3238,83 @@ SYS;
         $verifyPath = route('cert.verify', ['t' => $token], false);
 
         return $baseUrl . $verifyPath;
+    }
+
+    /**
+     * Participant-name alignment is a presentation choice made in the live
+     * preview; anything unrecognised falls back to the historic centred layout.
+     */
+    private function normalizeNameAlignment(mixed $value): string
+    {
+        $alignment = is_string($value) ? strtolower(trim($value)) : '';
+
+        return in_array($alignment, self::NAME_ALIGNMENTS, true) ? $alignment : 'center';
+    }
+
+    /**
+     * The QR caption toggles default to enabled so certificates prepared before
+     * the toggles existed keep printing their code and verification link.
+     */
+    private function normalizeQrLabelFlag(mixed $value): bool
+    {
+        if ($value === null || $value === '') {
+            return true;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Horizontal nudge in CSS pixels, clamped so a stray value can never push
+     * the name or signature off the page.
+     */
+    private function normalizeOffsetPx(mixed $value): int
+    {
+        if (!is_numeric($value)) {
+            return 0;
+        }
+
+        return max(-self::MAX_OFFSET_PX, min(self::MAX_OFFSET_PX, (int) round((float) $value)));
+    }
+
+    /**
+     * A blank or unusable margin falls back to the standard symmetric band, so
+     * a certificate never ends up with no room to print the name in.
+     */
+    private function normalizeMarginMm(mixed $value): int
+    {
+        if (!is_numeric($value)) {
+            return self::DEFAULT_NAME_MARGIN_MM;
+        }
+
+        return max(0, min(self::MAX_NAME_MARGIN_MM, (int) round((float) $value)));
+    }
+
+    /**
+     * Normalise the pair together: margins that would leave too little room to
+     * print a name in fall back to the standard symmetric band rather than
+     * producing a certificate with a sliver of usable width.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function normalizeNameMargins(mixed $left, mixed $right): array
+    {
+        $leftMm = $this->normalizeMarginMm($left);
+        $rightMm = $this->normalizeMarginMm($right);
+
+        // A4 landscape is the narrowest page these templates use; checking
+        // against it keeps the guard independent of the template being stamped.
+        $narrowestPageMm = 297.0;
+        if (($narrowestPageMm - $leftMm - $rightMm) < self::MIN_NAME_BAND_MM) {
+            return [self::DEFAULT_NAME_MARGIN_MM, self::DEFAULT_NAME_MARGIN_MM];
+        }
+
+        return [$leftMm, $rightMm];
+    }
+
+    private function offsetPxToMm(int $offsetPx): float
+    {
+        return $offsetPx * self::CSS_PIXEL_IN_MM;
     }
 
     private function toLatin1(string $value): string
@@ -2869,6 +3602,309 @@ SYS;
     }
 
     /**
+     * Scale the participant name down until it fits the template's name band,
+     * wrapping onto extra lines only when even the smallest allowed size still
+     * overflows. A name that already fits keeps the requested size untouched.
+     *
+     * @return array{0: float, 1: list<string>}
+     */
+    private function fitNameToBand(
+        Fpdi $pdf,
+        string $nameText,
+        string $fontFamily,
+        float $nominalSize,
+        float $maxWidth,
+        ?array $inkMap = null,
+        float $baselineY = 0.0,
+        string $alignment = 'center',
+        float $marginLeft = 0.0
+    ): array {
+        $pdf->SetFont($fontFamily, '', $nominalSize);
+        if (trim($nameText) === '' || $pdf->GetStringWidth($nameText) <= $maxWidth) {
+            return [$nominalSize, [$nameText]];
+        }
+
+        $minSize = min($nominalSize, self::NAME_MIN_FONT_SIZE);
+
+        // A name too wide for one line is wrapped at as close to the nominal
+        // size as the template allows, rather than being shrunk onto a single
+        // small line. Each candidate layout is checked against the artwork it
+        // would actually sit on, so a heading above the name pushes the size
+        // down while a decorative border beside it does not.
+        for ($size = $nominalSize; $size >= $minSize; $size -= self::NAME_FIT_STEP_PT) {
+            $pdf->SetFont($fontFamily, '', $size);
+            $lines = $this->balanceNameLines(
+                $pdf,
+                $nameText,
+                $this->wrapNameToWidth($pdf, $nameText, $maxWidth),
+                $maxWidth
+            );
+
+            if ($this->nameLayoutClearsArtwork($pdf, $lines, $size, $inkMap, $baselineY, $alignment, $marginLeft, $maxWidth)) {
+                return [$size, $lines];
+            }
+        }
+
+        // Nothing cleared the artwork — a template whose name area is covered by
+        // a background image, say. Fall back to the geometric budget so the name
+        // still prints at a reasonable size instead of dropping to the minimum.
+        for ($size = $nominalSize; $size >= $minSize; $size -= self::NAME_FIT_STEP_PT) {
+            $pdf->SetFont($fontFamily, '', $size);
+            $lines = $this->wrapNameToWidth($pdf, $nameText, $maxWidth);
+            if ($this->nameBlockAscent($size, count($lines)) <= self::NAME_MAX_ASCENT_MM) {
+                return [$size, $this->balanceNameLines($pdf, $nameText, $lines, $maxWidth)];
+            }
+        }
+
+        $pdf->SetFont($fontFamily, '', $minSize);
+
+        return [$minSize, $this->wrapNameToWidth($pdf, $nameText, $maxWidth)];
+    }
+
+    /**
+     * Would this candidate layout land on artwork? Every line is boxed at the
+     * position it would be drawn and tested against the template's ink map.
+     *
+     * @param  list<string>  $lines
+     * @param  array{cols: int, rows: int, grid: list<string>}|null  $inkMap
+     */
+    private function nameLayoutClearsArtwork(
+        Fpdi $pdf,
+        array $lines,
+        float $size,
+        ?array $inkMap,
+        float $baselineY,
+        string $alignment,
+        float $marginLeft,
+        float $bandWidth
+    ): bool {
+        if ($inkMap === null) {
+            // Nothing measured: keep the conservative ascent budget so a name
+            // still cannot climb off the top of a template we cannot read.
+            return $this->nameBlockAscent($size, count($lines)) <= self::NAME_MAX_ASCENT_MM;
+        }
+
+        $lineHeight = $size * self::POINT_IN_MM * self::NAME_LINE_HEIGHT_RATIO;
+        $capHeight = $size * self::POINT_IN_MM * self::NAME_CAP_HEIGHT_RATIO;
+        $topBaseline = $baselineY - ((count($lines) - 1) * $lineHeight);
+
+        foreach ($lines as $index => $line) {
+            $lineWidth = $pdf->GetStringWidth($line);
+            $x = match ($alignment) {
+                'left' => $marginLeft,
+                'right' => max(0.0, $marginLeft + $bandWidth - $lineWidth),
+                default => max(0.0, $marginLeft + (($bandWidth - $lineWidth) / 2)),
+            };
+            $lineBaseline = $topBaseline + ($index * $lineHeight);
+
+            if (!TemplateNameBand::regionIsClear(
+                $inkMap,
+                $x,
+                $lineBaseline - $capHeight,
+                $lineWidth,
+                $capHeight
+            )) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * How far a name block reaches above its baseline: one line height for each
+     * line after the first, plus the cap height of the topmost line.
+     */
+    private function nameBlockAscent(float $fontSize, int $lineCount): float
+    {
+        $lineHeight = $fontSize * self::POINT_IN_MM * self::NAME_LINE_HEIGHT_RATIO;
+
+        return (($lineCount - 1) * $lineHeight)
+            + ($fontSize * self::POINT_IN_MM * self::NAME_CAP_HEIGHT_RATIO);
+    }
+
+    /**
+     * Even out a two-line wrap. Greedy wrapping fills the first line and can
+     * strand a single word on the second ("... y Alonso / Realonda"); shifting
+     * the break to the most even split reads better and costs nothing, since
+     * both halves already fit by construction.
+     *
+     * @param  list<string>  $lines
+     * @return list<string>
+     */
+    private function balanceNameLines(Fpdi $pdf, string $nameText, array $lines, float $maxWidth): array
+    {
+        if (count($lines) !== 2) {
+            return $lines;
+        }
+
+        $words = preg_split('/\s+/u', trim($nameText), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (count($words) < 3) {
+            return $lines;
+        }
+
+        $best = $lines;
+        $bestSpread = INF;
+        for ($split = 1; $split < count($words); $split++) {
+            $first = implode(' ', array_slice($words, 0, $split));
+            $second = implode(' ', array_slice($words, $split));
+            $firstWidth = $pdf->GetStringWidth($first);
+            $secondWidth = $pdf->GetStringWidth($second);
+            if ($firstWidth > $maxWidth || $secondWidth > $maxWidth) {
+                continue;
+            }
+
+            $spread = abs($firstWidth - $secondWidth);
+            if ($spread < $bestSpread) {
+                $bestSpread = $spread;
+                $best = [$first, $second];
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Break a name that is still too wide at the smallest allowed size onto
+     * several lines, splitting mid-word only for words that cannot fit alone.
+     *
+     * @return list<string>
+     */
+    private function wrapNameToWidth(Fpdi $pdf, string $nameText, float $maxWidth): array
+    {
+        $lines = [];
+        $current = '';
+
+        foreach (preg_split('/\s+/u', $nameText, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $word) {
+            foreach ($this->splitNameWordToWidth($pdf, $word, $maxWidth) as $piece) {
+                $candidate = $current === '' ? $piece : $current . ' ' . $piece;
+                if ($current !== '' && $pdf->GetStringWidth($candidate) > $maxWidth) {
+                    $lines[] = $current;
+                    $current = $piece;
+                    continue;
+                }
+
+                $current = $candidate;
+            }
+        }
+
+        if ($current !== '') {
+            $lines[] = $current;
+        }
+
+        return $lines === [] ? [$nameText] : $lines;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitNameWordToWidth(Fpdi $pdf, string $word, float $maxWidth): array
+    {
+        if ($word === '' || $pdf->GetStringWidth($word) <= $maxWidth) {
+            return [$word];
+        }
+
+        $segments = [];
+        $current = '';
+        foreach (preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $character) {
+            $candidate = $current . $character;
+            if ($current !== '' && $pdf->GetStringWidth($candidate) > $maxWidth) {
+                $segments[] = $current;
+                $current = $character;
+                continue;
+            }
+
+            $current = $candidate;
+        }
+
+        if ($current !== '') {
+            $segments[] = $current;
+        }
+
+        return $segments === [] ? [$word] : $segments;
+    }
+
+    /**
+     * Lowest Y the caption may occupy: the top of the signature block when one
+     * is stamped, otherwise the bottom page margin.
+     *
+     * @param  array<string, mixed>  $pageSize
+     */
+    private function captionBottomBound(array $pageSize, bool $applyRegionalDirectorESign): float
+    {
+        $pageHeight = (float) ($pageSize['height'] ?? 0.0);
+        $bottom = $pageHeight - self::CAPTION_BOTTOM_GAP;
+
+        if ($applyRegionalDirectorESign) {
+            $signatureBox = $this->regionalDirectorESignBox($pageSize);
+            if ($signatureBox !== null) {
+                $bottom = min($bottom, $signatureBox['y'] - self::CAPTION_BOTTOM_GAP);
+            }
+        }
+
+        return max(0.0, $bottom);
+    }
+
+    /**
+     * Shrink the caption font and its line spacing together until the wrapped
+     * block fits the height available to it. A caption that already fits keeps
+     * the standard size, and one that cannot fit even at the smallest size is
+     * still rendered at that size rather than overflowing the page.
+     *
+     * @param  array<int, array<int, array{text: string, style: string}>>  $paragraphs
+     * @return array{0: float, 1: float, 2: array<int, array<int, mixed>>}
+     */
+    private function fitCaptionToBox(Fpdi $pdf, array $paragraphs, float $maxWidth, float $maxHeight): array
+    {
+        $fontSize = self::CAPTION_FONT_SIZE;
+        $wrapped = null;
+        $lineHeight = self::CAPTION_LINE_HEIGHT;
+        $lineCount = 0;
+        $overflows = false;
+
+        while (true) {
+            $lineHeight = self::CAPTION_LINE_HEIGHT * ($fontSize / self::CAPTION_FONT_SIZE);
+            $wrapped = [];
+            $lineCount = 0;
+
+            foreach ($paragraphs as $lineRuns) {
+                if ($lineRuns === []) {
+                    // A blank editor line still consumes one line of height.
+                    $wrapped[] = [];
+                    $lineCount++;
+                    continue;
+                }
+
+                $paragraphLines = $this->buildStyledPdfLines($pdf, $lineRuns, $maxWidth, $fontSize);
+                $wrapped[] = $paragraphLines;
+                $lineCount += count($paragraphLines);
+            }
+
+            if ($maxHeight <= 0.0 || ($lineCount * $lineHeight) <= $maxHeight) {
+                break;
+            }
+
+            if ($fontSize <= self::CAPTION_MIN_FONT_SIZE) {
+                // Out of room even at the smallest size: the caption is rendered
+                // anyway (truncating an official citation would be worse) and the
+                // caller is told so it can warn whoever is preparing the batch.
+                $overflows = true;
+                break;
+            }
+
+            $fontSize = max(self::CAPTION_MIN_FONT_SIZE, $fontSize - self::CAPTION_FIT_STEP_PT);
+        }
+
+        return [$fontSize, $lineHeight, $wrapped ?? [], [
+            'font_size' => $fontSize,
+            'line_height' => $lineHeight,
+            'lines' => $lineCount,
+            'max_lines' => $lineHeight > 0 ? (int) floor($maxHeight / $lineHeight) : 0,
+            'overflows' => $overflows,
+        ]];
+    }
+
+    /**
      * Wrap a single caption line (a list of styled runs) into rendered visual
      * lines that each fit within $maxWidth.
      *
@@ -3033,12 +4069,41 @@ SYS;
     }
 
 
-    private function stampRegionalDirectorSignatureBlock(Fpdi $pdf, array $pageSize): void
+    private function stampRegionalDirectorSignatureBlock(Fpdi $pdf, array $pageSize, int $offsetPx = 0): bool
     {
-        $this->stampRegionalDirectorESign($pdf, $pageSize);
+        return $this->stampRegionalDirectorESign($pdf, $pageSize, $offsetPx) !== null;
     }
 
-    private function stampRegionalDirectorESign(Fpdi $pdf, array $pageSize): ?array
+    private function stampRegionalDirectorESign(Fpdi $pdf, array $pageSize, int $offsetPx = 0): ?array
+    {
+        $box = $this->regionalDirectorESignBox($pageSize, $offsetPx);
+        if ($box === null) {
+            return null;
+        }
+
+        [$width, $height] = $this->fitImageWithinBox($box['path'], $box['width'], $box['height']);
+
+        $drawX = $box['x'] + (($box['width'] - $width) / 2);
+        $drawY = $box['y'] + (($box['height'] - $height) / 2);
+
+        $pdf->Image($box['path'], $drawX, $drawY, $width, $height);
+
+        return [
+            'x' => $drawX,
+            'y' => $drawY,
+            'width' => $width,
+            'height' => $height,
+        ];
+    }
+
+    /**
+     * Resolved placement of the signature box, shared by the stamping call and
+     * by the caption fitter that has to stay clear of it.
+     *
+     * @param  array<string, mixed>  $pageSize
+     * @return array{path: string, x: float, y: float, width: float, height: float}|null
+     */
+    private function regionalDirectorESignBox(array $pageSize, int $offsetPx = 0): ?array
     {
         $esignPath = $this->resolveRegionalDirectorESignPath();
         if (!$esignPath) {
@@ -3051,7 +4116,8 @@ SYS;
             return null;
         }
 
-        [$width, $height] = $this->fitImageWithinBox($esignPath, $boxWidth, $boxHeight);
+        $pageWidth = (float) ($pageSize['width'] ?? 0.0);
+        $pageHeight = (float) ($pageSize['height'] ?? 0.0);
 
         $xEnv = env('CERT_RD_ESIGN_X');
         $yEnv = env('CERT_RD_ESIGN_Y');
@@ -3060,36 +4126,41 @@ SYS;
 
         $x = is_numeric($xEnv)
             ? (float) $xEnv
-            : (($pageSize['width'] - $boxWidth) / 2);
+            : (($pageWidth - $boxWidth) / 2);
         $y = is_numeric($yEnv)
             ? (float) $yEnv
-            : ($pageSize['height'] - $boxHeight - 18);
+            : ($pageHeight - $boxHeight - 18);
         $y += $yOffset;
+        // Applied before the margin clamp below so a large nudge parks the
+        // signature at the page edge instead of running off it.
+        $x += $this->offsetPxToMm($offsetPx);
 
         $margin = 5.0;
-        $maxX = max($margin, $pageSize['width'] - $margin - $boxWidth);
-        $maxY = max($margin, $pageSize['height'] - $margin - $boxHeight);
-        $x = min(max($x, $margin), $maxX);
-        $y = min(max($y, $margin), $maxY);
-
-        $drawX = $x + (($boxWidth - $width) / 2);
-        $drawY = $y + (($boxHeight - $height) / 2);
-
-        $pdf->Image($esignPath, $drawX, $drawY, $width, $height);
+        $maxX = max($margin, $pageWidth - $margin - $boxWidth);
+        $maxY = max($margin, $pageHeight - $margin - $boxHeight);
 
         return [
-            'x' => $drawX,
-            'y' => $drawY,
-            'width' => $width,
-            'height' => $height,
+            'path' => $esignPath,
+            'x' => min(max($x, $margin), $maxX),
+            'y' => min(max($y, $margin), $maxY),
+            'width' => $boxWidth,
+            'height' => $boxHeight,
         ];
     }
 
     private function fitImageWithinBox(string $imagePath, float $boxWidth, float $boxHeight): array
     {
-        $imageSize = @getimagesize($imagePath);
-        $nativeWidth = (float) ($imageSize[0] ?? 0);
-        $nativeHeight = (float) ($imageSize[1] ?? 0);
+        // Same signature image on every page of a batch, so its native size is
+        // read once rather than once per participant.
+        if (!isset($this->regionalDirectorESignMemo['dimensions'][$imagePath])) {
+            $probed = @getimagesize($imagePath);
+            $this->regionalDirectorESignMemo['dimensions'][$imagePath] = [
+                (float) ($probed[0] ?? 0),
+                (float) ($probed[1] ?? 0),
+            ];
+        }
+
+        [$nativeWidth, $nativeHeight] = $this->regionalDirectorESignMemo['dimensions'][$imagePath];
 
         if ($nativeWidth <= 0 || $nativeHeight <= 0) {
             return [$boxWidth, $boxHeight];
@@ -3106,9 +4177,21 @@ SYS;
         ];
     }
 
+    /**
+     * Resolved once per request. This is called twice for every participant of a
+     * batch — once to keep the caption clear of the signature, once to stamp it —
+     * and each call otherwise costs two `settings` queries plus a handful of
+     * filesystem probes, so a 300-name batch was issuing over a thousand
+     * redundant queries. The memo is an instance property, so it lives and dies
+     * with the request and cannot serve a stale path after a new upload.
+     */
     private function resolveRegionalDirectorESignPath(): ?string
     {
-        return RegionalDirectorSignatory::resolvedPath();
+        if (!array_key_exists('path', $this->regionalDirectorESignMemo)) {
+            $this->regionalDirectorESignMemo['path'] = RegionalDirectorSignatory::resolvedPath();
+        }
+
+        return $this->regionalDirectorESignMemo['path'];
     }
 
     private function formatEndorsementDateRange(array $payload): string
@@ -3196,39 +4279,57 @@ SYS;
             abort(404, 'Uploaded template PDF is missing in storage.');
         }
 
-        $firstParticipantName = $this->firstEndorsementParticipantName($endorsement);
-        $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
-        $verifyUrl = $this->buildVerifyUrl((string) Str::uuid());
+        // ?all=1 renders every participant so the reviewer can page through the
+        // whole batch; without it the preview stays a single representative page.
+        $previewAll = $request->boolean('all');
+        $names = $previewAll
+            ? $this->endorsementParticipantNames($endorsement)
+            : [$this->firstEndorsementParticipantName($endorsement)];
+
+        $totalNames = count($names);
+        $names = array_slice($names, 0, self::PREVIEW_ALL_MAX_PARTICIPANTS);
 
         // The caption lives in the endorsement payload (see buildTrainingPayload),
         // not as a column on the endorsement row, so read it from there to match
         // what the final generated certificate prints on approval.
         $endorsementPayload = (array) $endorsement->payload;
+        $endorsementMargins = $this->normalizeNameMargins(
+            $endorsementPayload['name_margin_left'] ?? null,
+            $endorsementPayload['name_margin_right'] ?? null
+        );
+        $layoutReport = null;
 
         try {
-            $pdfContent = $this->renderStampedPdf(
+            $pdfContent = $this->renderStampedPdfForParticipants(
                 $storage['absolute'],
-                $firstParticipantName,
-                self::STANDARD_NAME_POS_X,
+                $this->buildPreviewParticipants($names),
+                (float) $endorsementMargins[0],
                 self::STANDARD_NAME_POS_Y,
                 self::STANDARD_NAME_FONT_SIZE,
                 self::STANDARD_NAME_FONT_FAMILY,
-                true,
-                $previewCode,
-                $verifyUrl,
+                $this->normalizeNameAlignment($endorsementPayload['name_alignment'] ?? null),
                 true,
                 $endorsementPayload['caption_text'] ?? null,
-                $endorsementPayload['caption_alignment'] ?? 'center'
+                $endorsementPayload['caption_alignment'] ?? 'center',
+                $this->normalizeQrLabelFlag($endorsementPayload['qr_show_code'] ?? null),
+                $this->normalizeQrLabelFlag($endorsementPayload['qr_show_link'] ?? null),
+                $this->normalizeOffsetPx($endorsementPayload['name_offset_x'] ?? null),
+                $this->normalizeOffsetPx($endorsementPayload['signature_offset_x'] ?? null),
+                $layoutReport,
+                (float) $endorsementMargins[1],
+                $this->normalizeOffsetPx($endorsementPayload['name_offset_y'] ?? null)
             );
         } catch (\Throwable $e) {
             report($e);
             abort(422, $e->getMessage());
         }
 
-        return response($pdfContent, 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $this->endorsementPdfFilename($endorsement, 'preview') . '"',
-        ]);
+        return response($pdfContent, 200, $this->previewAllHeaders(
+            $this->endorsementPdfFilename($endorsement, $previewAll ? 'preview-all' : 'preview'),
+            count($names),
+            $totalNames,
+            $layoutReport
+        ));
     }
 
     public function downloadEndorsementParticipants(Request $request, int $id): StreamedResponse
@@ -3374,6 +4475,31 @@ SYS;
     private function endorsementParticipantsReviewedSessionKey(int $endorsementId): string
     {
         return 'cert_endorsements.participants_reviewed.' . $endorsementId;
+    }
+
+    /**
+     * Every named participant on an endorsement, in file order.
+     *
+     * @return list<string>
+     */
+    private function endorsementParticipantNames(CertificateEndorsement $endorsement): array
+    {
+        if (empty($endorsement->participants_file_path)) {
+            abort(404, 'Participants file not available for preview.');
+        }
+
+        try {
+            $participants = $this->parseParticipantStoragePath((string) $endorsement->participants_file_path);
+        } catch (\Throwable $e) {
+            abort(422, 'Unable to read participants file for preview.');
+        }
+
+        $names = $this->previewParticipantNames($participants);
+        if ($names === []) {
+            abort(422, 'No participant name found for PDF preview.');
+        }
+
+        return $names;
     }
 
     private function firstEndorsementParticipantName(CertificateEndorsement $endorsement): string

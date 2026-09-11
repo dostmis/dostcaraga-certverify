@@ -81,7 +81,9 @@ class RefreshCertificateQrDomain extends Command
                 $pdfContent = $this->refreshStampedPdf(
                     $absPath,
                     (string) $cert->certificate_code,
-                    $verifyUrl
+                    $verifyUrl,
+                    (bool) $cert->qr_show_code,
+                    (bool) $cert->qr_show_link
                 );
                 file_put_contents($absPath, $pdfContent);
                 $this->line("OK  {$cert->certificate_code}");
@@ -124,7 +126,13 @@ class RefreshCertificateQrDomain extends Command
         return null;
     }
 
-    private function refreshStampedPdf(string $sourceAbs, string $codeText, string $verifyUrl): string
+    private function refreshStampedPdf(
+        string $sourceAbs,
+        string $codeText,
+        string $verifyUrl,
+        bool $showQrCode = true,
+        bool $showQrLink = true
+    ): string
     {
         $qrPng = QrCode::format('png')->size(220)->margin(1)->generate($verifyUrl);
 
@@ -160,28 +168,43 @@ class RefreshCertificateQrDomain extends Command
             $margin = 10;
             $x = $size['width'] - $qrSize - $margin;
 
+            $drawCode = $showQrCode && trim($codeText) !== '';
+            $drawLink = $showQrLink && trim($verifyUrl) !== '';
+
             $textOffset = 4;
-            $requiredBottom = $qrSize + $textOffset + 9;
+            // Mirror the reservation used when the certificate was first stamped
+            // so a domain refresh never shifts the QR that is already in place.
+            $labelReserve = match (true) {
+                $drawCode && $drawLink => $textOffset + 9,
+                $drawCode || $drawLink => $textOffset + 4,
+                default => 0,
+            };
+            $requiredBottom = $qrSize + $labelReserve;
             $maxY = $size['height'] - $margin - $requiredBottom;
             $y = min($size['height'] - $qrSize - $margin, $maxY);
             $y = max($margin, $y);
 
             $pdf->Image($qrForPdf, $x, $y, $qrSize, $qrSize);
 
-            $pdf->SetFont('Helvetica', '', 8);
-            $pdf->SetTextColor(0, 0, 0);
-            $textWidth = $pdf->GetStringWidth($codeText);
-            $textX = $x + ($qrSize - $textWidth) / 2;
-            $textX = max($margin, min($textX, $size['width'] - $margin - $textWidth));
-            $textY = $y + $qrSize + $textOffset;
-            $pdf->Text($textX, $textY, $codeText);
+            $labelY = $y + $qrSize + $textOffset;
 
-            $pdf->SetFont('Helvetica', '', 5.5);
-            $linkText = $verifyUrl;
-            $linkWidth = $pdf->GetStringWidth($linkText);
-            $linkX = max($margin, $size['width'] - $margin - $linkWidth);
-            $linkY = $textY + 3.5;
-            $pdf->Text($linkX, $linkY, $linkText);
+            if ($drawCode) {
+                $pdf->SetFont('Helvetica', '', 8);
+                $pdf->SetTextColor(0, 0, 0);
+                $textWidth = $pdf->GetStringWidth($codeText);
+                $textX = $x + ($qrSize - $textWidth) / 2;
+                $textX = max($margin, min($textX, $size['width'] - $margin - $textWidth));
+                $pdf->Text($textX, $labelY, $codeText);
+                $labelY += 3.5;
+            }
+
+            if ($drawLink) {
+                $pdf->SetFont('Helvetica', '', 5.5);
+                $pdf->SetTextColor(0, 0, 0);
+                $linkWidth = $pdf->GetStringWidth($verifyUrl);
+                $linkX = max($margin, $size['width'] - $margin - $linkWidth);
+                $pdf->Text($linkX, $labelY, $verifyUrl);
+            }
         }
 
         foreach (array_unique($temporaryFiles) as $temporaryFile) {

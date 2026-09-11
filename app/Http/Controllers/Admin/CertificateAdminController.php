@@ -164,11 +164,16 @@ class CertificateAdminController extends Controller
 
             $endorsements = $endorsementsQuery->paginate(10)->withQueryString();
 
-            $endorsements->each(function (CertificateEndorsement $endorsement): void {
+            $deliveryCounts = \App\Support\CertificateDeliveryStatus::countsByEndorsement(
+                $endorsements->getCollection()->modelKeys()
+            );
+
+            $endorsements->each(function (CertificateEndorsement $endorsement) use ($deliveryCounts): void {
                 $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
                 $endorsement->setAttribute('training_title', $payload['training_title'] ?? 'Untitled');
                 $endorsement->setAttribute('issuing_office', $payload['issuing_office'] ?? '');
                 $endorsement->setAttribute('date_range', $this->formatEndorsementDateRange($payload));
+                $endorsement->setAttribute('delivery_counts', $deliveryCounts[$endorsement->id] ?? []);
             });
 
             return view('admin.certificates.index', compact(
@@ -194,6 +199,65 @@ class CertificateAdminController extends Controller
             'canViewAnalytics',
             'pendingEndorsementsCount'
         ));
+    }
+
+    /**
+     * Per-participant email delivery for one approved endorsement package.
+     * Visible to the endorser who submitted it and to the Regional Director.
+     */
+    public function endorsementDelivery(Request $request, int $id)
+    {
+        $user = $request->user();
+        $isRegionalDirector = $this->isRegionalDirector($user);
+        $endorsement = CertificateEndorsement::with('submitter')->findOrFail($id);
+
+        if (!$isRegionalDirector && (int) $endorsement->submitted_by !== (int) $user?->id) {
+            abort(403, 'You can only view delivery for certificate packages you endorsed.');
+        }
+
+        $outcomeOrder = array_flip(\App\Support\CertificateDeliveryStatus::outcomes());
+        $rows = $endorsement->certificates()
+            ->orderBy('participant_name')
+            ->get()
+            ->map(function (Certificate $certificate): array {
+                $outcome = \App\Support\CertificateDeliveryStatus::outcomeFor($certificate);
+
+                return [
+                    'certificate' => $certificate,
+                    'outcome' => $outcome,
+                    'reason' => \App\Support\CertificateDeliveryStatus::reasonFor($certificate),
+                    'last_update' => $certificate->email_sent_at ?? $certificate->email_failed_at ?? $certificate->email_queued_at,
+                ];
+            })
+            // Stable sort: problems first, alphabetical within each outcome.
+            ->sortBy(fn (array $row) => $outcomeOrder[$row['outcome']])
+            ->values();
+
+        $counts = $rows->countBy('outcome')->all();
+        $problemCount = $rows->filter(fn (array $row) => \App\Support\CertificateDeliveryStatus::isProblem($row['outcome']))->count();
+        $showProblemsOnly = $request->boolean('problems');
+        $visibleRows = $showProblemsOnly
+            ? $rows->filter(fn (array $row) => \App\Support\CertificateDeliveryStatus::isProblem($row['outcome']))->values()
+            : $rows;
+
+        $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
+        $pendingEndorsementsCount = CertificateEndorsement::query()
+            ->when(!$isRegionalDirector, fn ($query) => $query->where('submitted_by', $user?->id))
+            ->where('status', CertificateEndorsement::STATUS_ENDORSED)
+            ->count();
+
+        return view('admin.certificates.endorsement-delivery', [
+            'endorsement' => $endorsement,
+            'trainingTitle' => $payload['training_title'] ?? 'Untitled',
+            'issuingOffice' => $payload['issuing_office'] ?? '',
+            'dateRange' => $this->formatEndorsementDateRange($payload),
+            'rows' => $visibleRows,
+            'totalCount' => $rows->count(),
+            'counts' => $counts,
+            'problemCount' => $problemCount,
+            'showProblemsOnly' => $showProblemsOnly,
+            'pendingEndorsementsCount' => $pendingEndorsementsCount,
+        ]);
     }
 
     public function approvals(Request $request)
@@ -952,7 +1016,8 @@ class CertificateAdminController extends Controller
                 (array) $endorsement->payload,
                 $participants,
                 (string) $endorsement->template_pdf_path,
-                true
+                true,
+                $endorsement->id
             );
         } catch (\Throwable $e) {
             return back()->withErrors([$e->getMessage()]);
@@ -2100,7 +2165,8 @@ SYS;
         array $payload,
         array $participants,
         string $templatePath,
-        bool $applyRegionalDirectorESign = false
+        bool $applyRegionalDirectorESign = false,
+        ?int $endorsementId = null
     ): array
     {
         $storage = Storage::disk('local');
@@ -2118,6 +2184,7 @@ SYS;
                 'participant_name' => $participant['name'],
                 'email' => $participant['email'] ?? null,
                 'recipient_id' => $recipientMatches[$i] ?? null,
+                'certificate_endorsement_id' => $endorsementId,
                 'gender' => $participant['gender'] ?? null,
                 'age' => $participant['age'] ?? null,
                 'block_lot_purok' => $participant['block_lot_purok'] ?? null,
@@ -2794,6 +2861,7 @@ SYS;
                 'signature_offset_x' => $this->normalizeOffsetPx($data['signature_offset_x'] ?? null),
                 'email' => $data['email'] ?? null,
                 'recipient_id' => $data['recipient_id'] ?? null,
+                'certificate_endorsement_id' => $data['certificate_endorsement_id'] ?? null,
                 'gender' => $data['gender'] ?? null,
                 'age' => $data['age'] ?? null,
                 'block_lot_purok' => $data['block_lot_purok'] ?? null,

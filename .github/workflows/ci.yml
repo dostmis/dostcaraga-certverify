@@ -57,6 +57,16 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
+      # Page-rendering tests go through @vite, which needs public/build/manifest.json.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build frontend assets
+        run: npm ci --no-audit --no-fund && npm run build
+
       - name: Prepare environment
         run: |
           cp .env.example .env

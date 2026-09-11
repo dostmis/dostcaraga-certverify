@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\AnchorCertificateOnHederaJob;
 use App\Jobs\SendCertificateEmailJob;
 use App\Models\Certificate;
 use App\Models\CertificateEndorsement;
@@ -2178,10 +2177,6 @@ SYS;
                 signatureOffsetPx: (int) $cert->signature_offset_x,
                 nameMarginRight: (float) $cert->name_margin_right
             );
-
-            // Anchor the certificate hash to Hedera (no-op unless HEDERA_ENABLED
-            // and a topic is configured). Runs on the queue, never blocks issuance.
-            AnchorCertificateOnHederaJob::dispatch($cert->id);
 
             $generatedCertificates[] = $cert->fresh();
         }

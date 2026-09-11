@@ -48,6 +48,7 @@ class UserAdminController extends Controller
             'approved_by' => $request->user()->id,
             'rejected_at' => null,
             'rejected_by' => null,
+            'rejection_reason' => null,
             'role' => $data['role'],
             'is_admin' => $data['role'] === User::ROLE_REGIONAL_DIRECTOR,
         ]);
@@ -57,11 +58,16 @@ class UserAdminController extends Controller
 
     public function reject(Request $request, int $id): RedirectResponse
     {
+        $data = $request->validate([
+            'rejection_reason' => ['required', 'string', 'max:1000'],
+        ]);
+
         $user = User::findOrFail($id);
         $user->update([
             'approval_status' => 'rejected',
             'rejected_at' => now(),
             'rejected_by' => $request->user()->id,
+            'rejection_reason' => trim($data['rejection_reason']) ?: null,
         ]);
 
         return back()->with('success', 'User rejected.');

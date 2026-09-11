@@ -31,6 +31,13 @@ class SendCertificateEmailJob implements ShouldQueue
             return;
         }
 
+        // An administrator may have withheld this certificate after the job was
+        // queued (e.g. the address on file is not the participant's). The hold
+        // is authoritative: never deliver, and leave the status untouched.
+        if ($certificate->email_delivery_status === Certificate::EMAIL_STATUS_HELD) {
+            return;
+        }
+
         $certificate->forceFill([
             'email_last_attempt_at' => now(),
         ])->save();
@@ -72,6 +79,12 @@ class SendCertificateEmailJob implements ShouldQueue
     {
         $certificate = Certificate::find($this->certificateId);
         if (! $certificate) {
+            return;
+        }
+
+        // Do not let a failing in-flight job clear an administrator's hold,
+        // otherwise the certificate silently becomes eligible for resend again.
+        if ($certificate->email_delivery_status === Certificate::EMAIL_STATUS_HELD) {
             return;
         }
 

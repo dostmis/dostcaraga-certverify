@@ -759,6 +759,215 @@
       box-shadow: 0 8px 18px rgba(13, 79, 140, 0.18);
     }
 
+    .layout-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+      background: linear-gradient(180deg, #f9fcff 0%, #eef5fb 100%);
+      border: 1px solid #d9e7f4;
+      border-radius: 13px;
+    }
+
+    .layout-line {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .layout-line + .layout-line {
+      padding-top: 10px;
+      border-top: 1px solid #dbe8f5;
+    }
+
+    .layout-line-label {
+      flex: 0 0 120px;
+    }
+
+    .layout-group-buttons {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .layout-group-checks {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .layout-nudge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-left: 6px;
+      margin-left: auto;
+    }
+
+    .layout-margins {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-left: 6px;
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+
+    .layout-margin-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 34px;
+      padding: 0 8px;
+      background: #ffffff;
+      border: 1px solid #d7e2ec;
+      border-radius: 8px;
+    }
+
+    .layout-margin-field label {
+      font-size: 11.5px;
+      color: #60748a;
+      margin: 0;
+    }
+
+    .layout-nudge-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 34px;
+      padding: 0 8px 0 4px;
+      background: #ffffff;
+      border: 1px solid #c7d7e7;
+      border-radius: 9px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .layout-nudge-field:focus-within {
+      border-color: #67a2d1;
+      box-shadow: 0 0 0 4px rgba(13, 79, 140, 0.12);
+    }
+
+    .layout-nudge-input {
+      width: 52px;
+      border: none;
+      outline: none;
+      background: transparent;
+      padding: 0 2px;
+      text-align: right;
+      font-size: 13px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: #0d4f8c;
+      /* Native spinners duplicate the ◀/▶ buttons, so hide them. */
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+
+    .layout-nudge-input::-webkit-outer-spin-button,
+    .layout-nudge-input::-webkit-inner-spin-button {
+      appearance: none;
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    .layout-nudge-unit {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      color: #7c8ea3;
+      pointer-events: none;
+    }
+
+    .layout-reset {
+      height: 34px;
+      padding: 0 12px;
+      border: 1px solid #c7d7e7;
+      background: #ffffff;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      color: #52637a;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+
+    .layout-reset:hover {
+      background: #f4f8fc;
+      border-color: #94aecd;
+      color: #0d4f8c;
+    }
+
+    .layout-reset:focus-visible {
+      outline: none;
+      border-color: #67a2d1;
+      box-shadow: 0 0 0 4px rgba(13, 79, 140, 0.12);
+    }
+
+    .layout-btn {
+      min-width: 34px;
+      height: 34px;
+      border: 1px solid #c7d7e7;
+      background: #ffffff;
+      border-radius: 9px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #37506b;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+      box-shadow: 0 1px 1px rgba(15, 23, 42, 0.04);
+    }
+
+    .layout-btn:hover {
+      background: #f4f8fc;
+      border-color: #94aecd;
+      transform: translateY(-1px);
+    }
+
+    .layout-btn:focus-visible {
+      outline: none;
+      border-color: #67a2d1;
+      box-shadow: 0 0 0 4px rgba(13, 79, 140, 0.12);
+    }
+
+    .layout-btn.active {
+      background: linear-gradient(180deg, #185c9b 0%, #0d4f8c 100%);
+      color: #ffffff;
+      border-color: #0d4f8c;
+      box-shadow: 0 8px 18px rgba(13, 79, 140, 0.18);
+    }
+
+    .layout-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: #37506b;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .layout-check input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: #0d4f8c;
+      cursor: pointer;
+    }
+
+    .layout-hint {
+      margin: 8px 0 0;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
     .caption-editor-surface {
       width: 100%;
       min-height: 148px;
@@ -804,6 +1013,39 @@
       color: #60748a;
       font-size: 12.5px;
       line-height: 1.45;
+    }
+
+    /* ---- Caption fit meter ---- */
+    .caption-fit {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .caption-fit-count {
+      font-variant-numeric: tabular-nums;
+      color: #60748a;
+      white-space: nowrap;
+    }
+
+    .caption-fit-note {
+      color: #60748a;
+    }
+
+    .caption-fit.is-tight .caption-fit-count,
+    .caption-fit.is-tight .caption-fit-note {
+      color: #9a6207;
+      font-weight: 600;
+    }
+
+    .caption-fit.is-over .caption-fit-count,
+    .caption-fit.is-over .caption-fit-note {
+      color: #b3261e;
+      font-weight: 700;
     }
 
     /* ---- AI Caption Assistant ---- */
@@ -1231,6 +1473,115 @@
         justify-content: flex-start;
       }
     }
+
+    /* Participant Source Toggle */
+    .source-toggle {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .source-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 14px 16px;
+      border: 2px solid var(--card-border);
+      border-radius: 12px;
+      cursor: pointer;
+      flex: 1;
+      min-width: 200px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .source-option:has(input:checked) {
+      border-color: var(--accent);
+      background: rgba(13, 79, 140, 0.04);
+    }
+
+    .source-option input[type="radio"] {
+      margin-top: 3px;
+      accent-color: var(--accent);
+    }
+
+    .source-option-label {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .source-option-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .source-option-desc {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Intake Participants Preview Table */
+    .intake-preview-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #e8f3ff;
+      color: #0b4c8c;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid #b9d6ef;
+    }
+
+    .intake-participants-table-wrap {
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+    }
+
+    .intake-participants-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .intake-participants-table th,
+    .intake-participants-table td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid #eef2f7;
+    }
+
+    .intake-participants-table th {
+      background: #f8fafc;
+      font-weight: 700;
+      color: var(--label);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .intake-participants-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .btn-sm {
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--accent);
+      cursor: pointer;
+    }
+
+    .btn-sm:hover {
+      background: #f0f7ff;
+    }
   </style>
 </head>
 <body>
@@ -1410,24 +1761,14 @@
                       data-program-prefix="{{ $project['program_prefix'] ?? '' }}"
                       @selected(old('dost_project') === $project['name'])
                     >
-                      {{ $project['name'] }}
+                      {{ $project['label'] ?? $project['name'] }}
                     </option>
                   @endforeach
-                  @if (old('dost_project') === 'Others')
-                    <option
-                      value="Others"
-                      data-code=""
-                      data-program-prefix="SSCP"
-                      selected
-                    >
-                      {{ $customDostProjectOptionLabel ?? 'Others, please specify' }}
-                    </option>
-                  @endif
                 </select>
               </div>
             </div>
 
-            <div class="row" id="dostProjectOtherRow" style="{{ old('dost_program') === ($sscpProgramLabel ?? null) && old('dost_project') === 'Others' ? '' : 'display:none;' }}">
+            <div class="row" id="dostProjectOtherRow" style="{{ old('dost_project') === 'Others' ? '' : 'display:none;' }}">
               <label>If Others, please specify DOST Project</label>
               <input
                 type="text"
@@ -1435,7 +1776,7 @@
                 name="dost_project_other"
                 value="{{ old('dost_project_other') }}"
                 maxlength="255"
-                {{ old('dost_program') === ($sscpProgramLabel ?? null) && old('dost_project') === 'Others' ? 'required' : '' }}
+                {{ old('dost_project') === 'Others' ? 'required' : '' }}
               >
             </div>
 
@@ -1569,6 +1910,67 @@
             </div>
 
             <div class="row">
+              <label>Participants Source</label>
+              <div class="source-toggle">
+                <label class="source-option">
+                  <input type="radio" name="participant_source" value="intake_link" {{ old('participant_source', 'intake_link') === 'intake_link' ? 'checked' : '' }} id="sourceIntakeLink">
+                  <span class="source-option-label">
+                    <span class="source-option-title">From Intake Link</span>
+                    <span class="source-option-desc">Select participants who filled up your intake link</span>
+                  </span>
+                </label>
+                <label class="source-option">
+                  <input type="radio" name="participant_source" value="file" {{ old('participant_source') === 'file' ? 'checked' : '' }} id="sourceFile">
+                  <span class="source-option-label">
+                    <span class="source-option-title">Upload CSV/XLSX</span>
+                    <span class="source-option-desc">Upload an exported participant list file</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {{-- Intake Link Selection --}}
+            <div class="row" id="intakeLinkSection" style="{{ old('participant_source', 'intake_link') === 'file' ? 'display:none;' : '' }}">
+              <label>Select Intake Event Link</label>
+              <select name="intake_event_id" id="intakeEventSelect">
+                <option value="">-- Select an intake event --</option>
+                @foreach ($intakeEvents as $event)
+                  <option value="{{ $event->id }}" {{ old('intake_event_id') == $event->id ? 'selected' : '' }}>
+                    {{ $event->event_name }} {{ $event->is_active ? '(Active)' : '(Inactive)' }}
+                  </option>
+                @endforeach
+              </select>
+              <div id="intakeParticipantsPreview" style="margin-top:12px;display:none;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <span class="intake-preview-badge" id="intakeParticipantCount"></span>
+                  <button type="button" class="btn-sm" id="intakeRefreshBtn" title="Refresh participants">Refresh</button>
+                </div>
+                <div class="intake-participants-table-wrap">
+                  <table class="intake-participants-table" id="intakeParticipantsTable">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Gender</th>
+                        <th>Region</th>
+                        <th>Province</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+              <div id="intakeNoParticipants" style="display:none;margin-top:8px;" class="upload-guidance muted">
+                No pending participants found for this intake event. Participants need to fill up the link first.
+              </div>
+              <div id="intakeLoadingIndicator" style="display:none;margin-top:8px;" class="upload-guidance muted">
+                Loading participants...
+              </div>
+            </div>
+
+            {{-- File Upload (secondary option) --}}
+            <div class="row" id="fileUploadSection" style="{{ old('participant_source', 'intake_link') !== 'file' ? 'display:none;' : '' }}">
               <label>Import Participants (CSV/XLSX)</label>
               <div class="upload-shell">
                 <label class="upload-surface" for="participantsFile">
@@ -1578,15 +1980,13 @@
                   </span>
                   <span class="upload-surface-button">Choose File</span>
                 </label>
-                <input class="file-input-hidden" type="file" id="participantsFile" name="participants_file" accept=".csv,.xlsx" required>
+                <input class="file-input-hidden" type="file" id="participantsFile" name="participants_file" accept=".csv,.xlsx">
                 <div class="upload-meta">
                   <span id="participantsFileName" class="upload-file-name">No file selected</span>
                   <span>CSV and XLSX supported</span>
                 </div>
               </div>
               <div class="upload-guidance muted">
-                Please do Participant Intake first and export csv or xlsx file, then upload here.
-                <br>
                 Headers supported:
                 <code>participant_name</code> <code>participant name</code> <code>name</code>
                 or split name fields
@@ -1628,6 +2028,149 @@
               </div>
             </div>
             <div id="livePreviewStatus" class="preview-status" hidden></div>
+
+            <div class="row">
+              <label>Certificate Layout</label>
+              <div class="layout-panel">
+                <div class="layout-line">
+                  <span class="caption-toolbar-label layout-line-label">Participant Name</span>
+                  <div class="layout-group-buttons" role="group" aria-label="Participant name alignment">
+                    <button type="button" class="layout-btn" data-name-align="left" title="Align participant name left" aria-label="Align participant name left" aria-pressed="false">←</button>
+                    <button type="button" class="layout-btn" data-name-align="center" title="Center participant name" aria-label="Center participant name" aria-pressed="false">↔</button>
+                    <button type="button" class="layout-btn" data-name-align="right" title="Align participant name right" aria-label="Align participant name right" aria-pressed="false">→</button>
+                  </div>
+                  <div class="layout-nudge" role="group" aria-label="Nudge participant name horizontally">
+                    <button type="button" class="layout-btn" data-nudge="name" data-nudge-step="-1" title="Move participant name 1px left" aria-label="Move participant name 1 pixel left">◀</button>
+                    <span class="layout-nudge-field">
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="nameOffsetXInput"
+                        name="name_offset_x"
+                        value="{{ old('name_offset_x', 0) }}"
+                        min="-{{ $layoutOffsetLimitPx }}"
+                        max="{{ $layoutOffsetLimitPx }}"
+                        step="1"
+                        inputmode="numeric"
+                        data-nudge-input="name"
+                        aria-label="Participant name horizontal offset in pixels">
+                      <span class="layout-nudge-unit" aria-hidden="true">px</span>
+                    </span>
+                    <button type="button" class="layout-btn" data-nudge="name" data-nudge-step="1" title="Move participant name 1px right" aria-label="Move participant name 1 pixel right">▶</button>
+                    <button type="button" class="layout-reset" data-nudge-reset="name" title="Reset participant name nudge">Reset</button>
+                  </div>
+                  <div class="layout-nudge" role="group" aria-label="Nudge participant name vertically">
+                    <button type="button" class="layout-btn" data-nudge="nameY" data-nudge-step="-1" title="Move participant name 1px up" aria-label="Move participant name 1 pixel up">▲</button>
+                    <span class="layout-nudge-field">
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="nameOffsetYInput"
+                        name="name_offset_y"
+                        value="{{ old('name_offset_y', 0) }}"
+                        min="-{{ $layoutOffsetLimitPx }}"
+                        max="{{ $layoutOffsetLimitPx }}"
+                        step="1"
+                        inputmode="numeric"
+                        data-nudge-input="nameY"
+                        aria-label="Participant name vertical offset in pixels">
+                      <span class="layout-nudge-unit" aria-hidden="true">px</span>
+                    </span>
+                    <button type="button" class="layout-btn" data-nudge="nameY" data-nudge-step="1" title="Move participant name 1px down" aria-label="Move participant name 1 pixel down">▼</button>
+                    <button type="button" class="layout-reset" data-nudge-reset="nameY" title="Reset participant name vertical nudge">Reset</button>
+                  </div>
+                </div>
+
+                <div class="layout-line">
+                  <span class="caption-toolbar-label layout-line-label">Text Area</span>
+                  <div class="layout-margins" role="group" aria-label="Usable text area side margins">
+                    <span class="layout-margin-field">
+                      <label for="nameMarginLeftInput">Left</label>
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="nameMarginLeftInput"
+                        name="name_margin_left"
+                        value="{{ old('name_margin_left', $defaultNameMarginMm) }}"
+                        min="0"
+                        max="{{ $nameMarginLimitMm }}"
+                        step="1"
+                        inputmode="numeric"
+                        aria-label="Left margin of the usable text area in millimetres">
+                      <span class="layout-nudge-unit" aria-hidden="true">mm</span>
+                    </span>
+                    <span class="layout-margin-field">
+                      <label for="nameMarginRightInput">Right</label>
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="nameMarginRightInput"
+                        name="name_margin_right"
+                        value="{{ old('name_margin_right', $defaultNameMarginMm) }}"
+                        min="0"
+                        max="{{ $nameMarginLimitMm }}"
+                        step="1"
+                        inputmode="numeric"
+                        aria-label="Right margin of the usable text area in millimetres">
+                      <span class="layout-nudge-unit" aria-hidden="true">mm</span>
+                    </span>
+                    <button type="button" class="layout-reset" id="nameMarginReset" title="Reset the text area to equal margins">Reset</button>
+                  </div>
+                </div>
+
+                <div class="layout-line">
+                  <span class="caption-toolbar-label layout-line-label">Signature</span>
+                  <div class="layout-nudge" role="group" aria-label="Nudge Regional Director signature horizontally">
+                    <button type="button" class="layout-btn" data-nudge="signature" data-nudge-step="-1" title="Move signature 1px left" aria-label="Move signature 1 pixel left">◀</button>
+                    <span class="layout-nudge-field">
+                      <input
+                        type="number"
+                        class="layout-nudge-input"
+                        id="signatureOffsetXInput"
+                        name="signature_offset_x"
+                        value="{{ old('signature_offset_x', 0) }}"
+                        min="-{{ $layoutOffsetLimitPx }}"
+                        max="{{ $layoutOffsetLimitPx }}"
+                        step="1"
+                        inputmode="numeric"
+                        data-nudge-input="signature"
+                        aria-label="Signature horizontal offset in pixels">
+                      <span class="layout-nudge-unit" aria-hidden="true">px</span>
+                    </span>
+                    <button type="button" class="layout-btn" data-nudge="signature" data-nudge-step="1" title="Move signature 1px right" aria-label="Move signature 1 pixel right">▶</button>
+                    <button type="button" class="layout-reset" data-nudge-reset="signature" title="Reset signature nudge">Reset</button>
+                  </div>
+                </div>
+
+                <div class="layout-line">
+                  <span class="caption-toolbar-label layout-line-label">QR Code</span>
+                  <div class="layout-group-checks">
+                    <input type="hidden" name="qr_show_code" value="0">
+                    <label class="layout-check">
+                      <input type="checkbox" id="qrShowCodeInput" name="qr_show_code" value="1" @checked(old('qr_show_code', '1'))>
+                      <span>Certificate code</span>
+                    </label>
+                    <input type="hidden" name="qr_show_link" value="0">
+                    <label class="layout-check">
+                      <input type="checkbox" id="qrShowLinkInput" name="qr_show_link" value="1" @checked(old('qr_show_link', '1'))>
+                      <span>Verification link</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <p class="layout-hint muted">
+                <strong>Text Area</strong> sets how much of the page width the name and caption may use, measured in from each edge.
+                Leave both at {{ $defaultNameMarginMm }}mm for the standard templates. If your design has artwork down one side,
+                raise that side&rsquo;s margin until the preview shows the name clear of the artwork &mdash; the name then centres
+                on the remaining space instead of on the page.
+              </p>
+              <p class="layout-hint muted">
+                Each ◀ / ▶ click shifts the element by one pixel (1&frasl;96 inch) on top of the chosen alignment, or type an exact offset into the px field.
+                Negative values move left, positive values move right, from &minus;{{ $layoutOffsetLimitPx }} to {{ $layoutOffsetLimitPx }}.
+                Clear both QR options to print the QR code on its own, with no code or link text beneath it &mdash; the QR code itself always stays on the certificate so it remains verifiable.
+              </p>
+              <input type="hidden" id="nameAlignmentInput" name="name_alignment" value="{{ old('name_alignment', 'center') }}">
+            </div>
 
             <div class="row">
               <label>Certificate Caption (appears below name)</label>
@@ -1695,6 +2238,10 @@
                   aria-multiline="true"
                   data-placeholder="Write the certificate caption exactly as it should appear beneath the participant name."></div>
                 <textarea id="captionTextInput" name="caption_text" rows="5" class="caption-source-input">{{ old('caption_text') }}</textarea>
+                <div class="caption-fit" id="captionFit">
+                  <span class="caption-fit-count" id="captionFitCount">0 characters</span>
+                  <span class="caption-fit-note" id="captionFitNote" role="status" aria-live="polite"></span>
+                </div>
               </div>
               <input type="hidden" id="captionAlignmentInput" name="caption_alignment" value="{{ old('caption_alignment', 'center') }}">
                 <br>
@@ -1722,12 +2269,17 @@
           <button class="btn btn-ghost" type="submit" formaction="{{ route('admin.certs.preview') }}" formtarget="_blank">
             Preview First Participant
           </button>
+          <button class="btn btn-ghost" type="submit" formaction="{{ route('admin.certs.preview-all') }}" formtarget="_blank"
+                  title="Renders up to the first 25 participants. A larger batch is trimmed so the preview stays quick to open; the filename shows how many of the total you are seeing.">
+            Preview Participants
+          </button>
           <button class="btn btn-main" type="submit">{{ $submitLabel }}</button>
         </div>
       </form>
     </div>
   </div>
   <script>
+    (() => {
     const activityTypeSelect = document.getElementById('activityTypeSelect');
     const activityTypeOtherRow = document.getElementById('activityTypeOtherRow');
     const activityTypeOtherInput = document.getElementById('activityTypeOtherInput');
@@ -1760,7 +2312,6 @@
     const setupOfficeProvinces = @json($setupOfficeProvinces ?? []);
     const sscpProgramLabel = @json($sscpProgramLabel ?? null);
     const sourceOfFundsOptions = @json($sourceOfFundsOptions ?? []);
-    const customDostProjectOptionLabel = @json($customDostProjectOptionLabel ?? 'Others, please specify');
     const customDostProjectOptionValue = 'Others';
     let persistedDostProjectValue = @json(old('dost_project', ''));
     const notApplicableValue = 'Not Applicable';
@@ -1781,13 +2332,6 @@
         code: notApplicableValue,
         programPrefix: '',
       };
-    const customDostProjectOption = {
-      value: customDostProjectOptionValue,
-      label: customDostProjectOptionLabel,
-      code: '',
-      programPrefix: 'SSCP',
-    };
-
     const toggleActivityTypeOther = () => {
       if (!activityTypeSelect || !activityTypeOtherRow || !activityTypeOtherInput) {
         return;
@@ -1914,9 +2458,7 @@
         return;
       }
 
-      const isCustomProject = dostProgramSelect
-        && dostProgramSelect.value === sscpProgramLabel
-        && dostProjectSelect.value === customDostProjectOptionValue;
+      const isCustomProject = dostProjectSelect.value === customDostProjectOptionValue;
 
       dostProjectOtherRow.style.display = isCustomProject ? '' : 'none';
       dostProjectOtherInput.required = isCustomProject;
@@ -1963,6 +2505,8 @@
       }
 
       dostProjectSelect.innerHTML = '';
+      dostProjectSelect.style.pointerEvents = lockSelection ? 'none' : '';
+      dostProjectSelect.style.opacity = lockSelection ? '0.7' : '';
 
       let placeholderOption = null;
       if (!lockSelection) {
@@ -1991,12 +2535,14 @@
 
       if (lockSelection && availableOptions[0]) {
         dostProjectSelect.value = availableOptions[0].value;
+        toggleDostProjectOther();
         return;
       }
 
       if (!availableOptions.some((option) => option.value === previousValue)) {
         dostProjectSelect.value = '';
       }
+      toggleDostProjectOther();
     };
 
     const buildSourceOfFundsOptions = (availableOptions, previousValue, lockSelection = false) => {
@@ -2005,6 +2551,8 @@
       }
 
       sourceOfFundsSelect.innerHTML = '';
+      sourceOfFundsSelect.style.pointerEvents = lockSelection ? 'none' : '';
+      sourceOfFundsSelect.style.opacity = lockSelection ? '0.7' : '';
 
       let placeholderOption = null;
       if (!lockSelection) {
@@ -2101,21 +2649,19 @@
       const requiredPrefix = dostProgramProjectPrefixes[selectedProgram] || '';
       const matchingOptions = requiredPrefix === ''
         ? []
-        : allDostProjectOptions.filter((option) => option.programPrefix === requiredPrefix);
+        : allDostProjectOptions.filter((option) => option.programPrefix === requiredPrefix || option.programPrefix === '__ALL__');
       const availableOptions = matchingOptions.length > 0
         ? matchingOptions
         : allDostProjectOptions;
-      const availableProjectOptions = isSscp
-        ? [...availableOptions, customDostProjectOption]
-        : availableOptions;
 
-      buildDostProjectOptions(availableProjectOptions, 'Select DOST Project', previousValue);
+      buildDostProjectOptions(availableOptions, 'Select DOST Project', previousValue);
 
       syncProjectCode();
     };
 
     if (dostProjectSelect) {
       dostProjectSelect.addEventListener('change', syncProjectCode);
+      dostProjectSelect.addEventListener('change', toggleDostProjectOther);
     }
 
     if (dostProgramSelect) {
@@ -2363,6 +2909,18 @@
           setPreviewIdleVisible(false);
           setPreviewLoading(false);
           setPreviewStatus('');
+          // The renderer measured the real text, so its verdict replaces the
+          // character-count estimate shown while typing.
+          applyCaptionFitFromPreview(response.headers);
+
+          if (response.headers.get('X-Signature-Expected') === '1'
+            && response.headers.get('X-Signature-Stamped') === '0') {
+            setPreviewStatus(
+              'The Regional Director e-signature is enabled but its image file could not be found, '
+                + 'so it is missing from this preview.',
+              true
+            );
+          }
         } catch (error) {
           if (error.name === 'AbortError') {
             return;
@@ -2510,6 +3068,104 @@
         captionEditor.classList.toggle('is-empty', getCaptionEditorText() === '');
       };
 
+      // ---- Caption fit meter -------------------------------------------------
+      // Character counts are a fast local estimate; the authoritative answer
+      // comes back from the renderer with each live preview (it actually wraps
+      // and measures the text), so a server verdict always wins.
+      const CAPTION_TIGHT_CHARS = 800;   // below this the caption still prints ~10pt or larger
+      const CAPTION_LIMIT_CHARS = 1400;  // measured capacity of the band above the signature
+      const captionFit = document.getElementById('captionFit');
+      const captionFitCount = document.getElementById('captionFitCount');
+      const captionFitNote = document.getElementById('captionFitNote');
+      let captionServerVerdict = null;
+
+      const setCaptionFitState = (state, note) => {
+        if (!captionFit) {
+          return;
+        }
+        captionFit.classList.toggle('is-tight', state === 'tight');
+        captionFit.classList.toggle('is-over', state === 'over');
+        if (captionFitNote) {
+          captionFitNote.textContent = note || '';
+        }
+      };
+
+      const updateCaptionFitMeter = () => {
+        if (!captionFit || !captionFitCount) {
+          return;
+        }
+
+        const length = getCaptionEditorText().trim().length;
+        captionFitCount.textContent = `${length.toLocaleString()} character${length === 1 ? '' : 's'}`;
+
+        // A server verdict describes the caption as it was last rendered; keep
+        // showing it until the text changes enough to make it stale.
+        if (captionServerVerdict && captionServerVerdict.length === length) {
+          setCaptionFitState(captionServerVerdict.state, captionServerVerdict.note);
+          return;
+        }
+
+        if (length === 0) {
+          setCaptionFitState('ok', '');
+          return;
+        }
+
+        if (length > CAPTION_LIMIT_CHARS) {
+          setCaptionFitState(
+            'over',
+            `Too long for this certificate — about ${(length - CAPTION_LIMIT_CHARS).toLocaleString()} characters over. `
+              + 'It will print at the smallest size and run into the signature area.'
+          );
+          return;
+        }
+
+        if (length > CAPTION_TIGHT_CHARS) {
+          setCaptionFitState('tight', 'Getting long — this will print in small type. Check the preview.');
+          return;
+        }
+
+        setCaptionFitState('ok', '');
+      };
+
+      // Called with the headers the renderer returns alongside each live preview.
+      const applyCaptionFitFromPreview = (headers) => {
+        if (!captionFit) {
+          return;
+        }
+
+        const length = getCaptionEditorText().trim().length;
+        if (length === 0) {
+          captionServerVerdict = null;
+          updateCaptionFitMeter();
+          return;
+        }
+
+        const overflows = headers.get('X-Caption-Overflow') === '1';
+        const fontSize = parseFloat(headers.get('X-Caption-Font-Size') || '0');
+        const lines = parseInt(headers.get('X-Caption-Lines') || '0', 10);
+        const maxLines = parseInt(headers.get('X-Caption-Max-Lines') || '0', 10);
+
+        if (overflows) {
+          const over = Math.max(1, lines - maxLines);
+          captionServerVerdict = {
+            length,
+            state: 'over',
+            note: `Does not fit — ${lines} lines of text but only room for ${maxLines}. `
+              + `Remove roughly ${over} line${over === 1 ? '' : 's'} or it will print over the signature.`,
+          };
+        } else if (fontSize > 0 && fontSize < 10) {
+          captionServerVerdict = {
+            length,
+            state: 'tight',
+            note: `Fits, but only at ${fontSize}pt — small on a printed certificate.`,
+          };
+        } else {
+          captionServerVerdict = { length, state: 'ok', note: '' };
+        }
+
+        updateCaptionFitMeter();
+      };
+
       const syncCaptionInputFromEditor = () => {
         if (!captionEditor || !captionInput) {
           return;
@@ -2519,6 +3175,7 @@
         const decodedMarkup = decodeHtmlEntities(sanitizedMarkup);
         captionInput.value = getCaptionEditorText() === '' ? '' : decodedMarkup;
         updateCaptionPlaceholderState();
+        updateCaptionFitMeter();
       };
 
       const restoreCaptionEditorFromInput = () => {
@@ -2727,6 +3384,149 @@
       }
 
       syncCaptionToolbarState();
+
+      // ---- Participant name alignment ----
+      // The buttons drive a hidden input (like the caption toolbar) because the
+      // PDF is rendered server-side from the posted form values.
+      const nameAlignInput = document.getElementById('nameAlignmentInput');
+      const nameAlignButtons = document.querySelectorAll('[data-name-align]');
+
+      const syncNameAlignmentButtons = () => {
+        const activeAlignment = nameAlignInput?.value || 'center';
+        nameAlignButtons.forEach((button) => {
+          const isActive = button.dataset.nameAlign === activeAlignment;
+          button.classList.toggle('active', isActive);
+          button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+      };
+
+      nameAlignButtons.forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          const nextAlignment = button.dataset.nameAlign || 'center';
+          if (!nameAlignInput || nameAlignInput.value === nextAlignment) {
+            return;
+          }
+          nameAlignInput.value = nextAlignment;
+          syncNameAlignmentButtons();
+          scheduleLivePreview();
+        });
+      });
+
+      syncNameAlignmentButtons();
+
+      // ---- Participant name / signature nudge ----
+      // Offsets are whole CSS pixels; the server converts them to mm when it
+      // stamps the PDF, so this must stay in the same unit and stay clamped.
+      const nudgeLimitPx = {{ (int) $layoutOffsetLimitPx }};
+      const nudgeInputs = new Map(
+        Array.from(document.querySelectorAll('[data-nudge-input]'))
+          .map((input) => [input.dataset.nudgeInput, input])
+      );
+
+      const readNudge = (target) => {
+        const parsed = Number.parseInt(nudgeInputs.get(target)?.value ?? '0', 10);
+        return Number.isNaN(parsed) ? 0 : parsed;
+      };
+
+      const clampNudge = (value) => Math.max(-nudgeLimitPx, Math.min(nudgeLimitPx, value));
+
+      // Programmatic value changes do not fire `input`, so the preview refresh
+      // has to be requested explicitly here.
+      const applyNudge = (target, nextValue) => {
+        const input = nudgeInputs.get(target);
+        if (!input) {
+          return;
+        }
+        const clamped = clampNudge(nextValue);
+        if (String(clamped) === input.value) {
+          return;
+        }
+        input.value = String(clamped);
+        scheduleLivePreview();
+      };
+
+      document.querySelectorAll('[data-nudge]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          const target = button.dataset.nudge;
+          const step = Number.parseInt(button.dataset.nudgeStep || '0', 10);
+          if (!target || Number.isNaN(step)) {
+            return;
+          }
+          applyNudge(target, readNudge(target) + step);
+        });
+      });
+
+      document.querySelectorAll('[data-nudge-reset]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          applyNudge(button.dataset.nudgeReset, 0);
+        });
+      });
+
+      // ---- Text area margins ----
+      const nameMarginLeftInput = document.getElementById('nameMarginLeftInput');
+      const nameMarginRightInput = document.getElementById('nameMarginRightInput');
+      const nameMarginReset = document.getElementById('nameMarginReset');
+      const DEFAULT_NAME_MARGIN_MM = {{ $defaultNameMarginMm }};
+      const NAME_MARGIN_LIMIT_MM = {{ $nameMarginLimitMm }};
+
+      if (nameMarginReset) {
+        nameMarginReset.addEventListener('click', (event) => {
+          event.preventDefault();
+          if (nameMarginLeftInput) {
+            nameMarginLeftInput.value = String(DEFAULT_NAME_MARGIN_MM);
+          }
+          if (nameMarginRightInput) {
+            nameMarginRightInput.value = String(DEFAULT_NAME_MARGIN_MM);
+          }
+          scheduleLivePreview();
+        });
+      }
+
+      [nameMarginLeftInput, nameMarginRightInput].forEach((input) => {
+        if (!input) {
+          return;
+        }
+        // Settle a blank or out-of-range entry on commit so the value sent to
+        // the renderer is the one shown in the field.
+        input.addEventListener('change', () => {
+          const parsed = Number.parseInt(input.value, 10);
+          const normalized = Number.isFinite(parsed)
+            ? Math.max(0, Math.min(NAME_MARGIN_LIMIT_MM, parsed))
+            : DEFAULT_NAME_MARGIN_MM;
+          if (String(normalized) === input.value) {
+            return;
+          }
+          input.value = String(normalized);
+          scheduleLivePreview();
+        });
+      });
+
+      nudgeInputs.forEach((input, target) => {
+        // Typing already refreshes the preview through the form-level `input`
+        // listener; normalise on commit so a blank or out-of-range entry
+        // settles on a value the server will accept.
+        input.addEventListener('change', () => {
+          const normalized = String(clampNudge(readNudge(target)));
+          if (normalized === input.value) {
+            return;
+          }
+          input.value = normalized;
+          scheduleLivePreview();
+        });
+
+        input.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            // Let the arrow keys nudge through the same clamped path the
+            // buttons use instead of the browser's unbounded stepper.
+            event.preventDefault();
+            applyNudge(target, readNudge(target) + (event.key === 'ArrowUp' ? 1 : -1));
+          }
+        });
+      });
+
       scheduleLivePreview();
 
       // ---- AI Caption Assistant ----
@@ -2918,8 +3718,116 @@
         });
       })();
 
+      // --- Participant Source Toggle ---
+      const sourceIntakeLink = document.getElementById('sourceIntakeLink');
+      const sourceFile = document.getElementById('sourceFile');
+      const intakeLinkSection = document.getElementById('intakeLinkSection');
+      const fileUploadSection = document.getElementById('fileUploadSection');
+      const intakeEventSelect = document.getElementById('intakeEventSelect');
+      const intakeParticipantsPreview = document.getElementById('intakeParticipantsPreview');
+      const intakeNoParticipants = document.getElementById('intakeNoParticipants');
+      const intakeLoadingIndicator = document.getElementById('intakeLoadingIndicator');
+      const intakeParticipantCount = document.getElementById('intakeParticipantCount');
+      const intakeParticipantsTable = document.getElementById('intakeParticipantsTable');
+      const intakeRefreshBtn = document.getElementById('intakeRefreshBtn');
+      const intakeParticipantsUrl = @json(url('/admin/certificates/intake-event'));
+
+      function toggleParticipantSource() {
+        const isIntake = sourceIntakeLink && sourceIntakeLink.checked;
+        if (intakeLinkSection) intakeLinkSection.style.display = isIntake ? '' : 'none';
+        if (fileUploadSection) fileUploadSection.style.display = isIntake ? 'none' : '';
+        if (participantsFileInput) {
+          participantsFileInput.required = !isIntake;
+          if (isIntake) participantsFileInput.value = '';
+        }
+      }
+
+      if (sourceIntakeLink) sourceIntakeLink.addEventListener('change', toggleParticipantSource);
+      if (sourceFile) sourceFile.addEventListener('change', toggleParticipantSource);
+      toggleParticipantSource();
+
+      function loadIntakeParticipants(eventId) {
+        if (!eventId) {
+          if (intakeParticipantsPreview) intakeParticipantsPreview.style.display = 'none';
+          if (intakeNoParticipants) intakeNoParticipants.style.display = 'none';
+          return;
+        }
+
+        if (intakeLoadingIndicator) intakeLoadingIndicator.style.display = '';
+        if (intakeParticipantsPreview) intakeParticipantsPreview.style.display = 'none';
+        if (intakeNoParticipants) intakeNoParticipants.style.display = 'none';
+
+        fetch(`${intakeParticipantsUrl}/${eventId}/participants`, {
+          headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (intakeLoadingIndicator) intakeLoadingIndicator.style.display = 'none';
+
+          if (!data.participants || data.participants.length === 0) {
+            if (intakeNoParticipants) intakeNoParticipants.style.display = '';
+            if (intakeParticipantsPreview) intakeParticipantsPreview.style.display = 'none';
+            return;
+          }
+
+          if (intakeParticipantCount) {
+            intakeParticipantCount.textContent = `${data.count} pending participant${data.count !== 1 ? 's' : ''}`;
+          }
+
+          const tbody = intakeParticipantsTable ? intakeParticipantsTable.querySelector('tbody') : null;
+          if (tbody) {
+            tbody.innerHTML = '';
+            data.participants.forEach((p, i) => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td>${i + 1}</td>
+                <td>${escapeHtml(p.participant_name || '')}</td>
+                <td>${escapeHtml(p.email || '-')}</td>
+                <td>${escapeHtml(p.gender || '-')}</td>
+                <td>${escapeHtml(p.region || '-')}</td>
+                <td>${escapeHtml(p.province || '-')}</td>
+              `;
+              tbody.appendChild(tr);
+            });
+          }
+
+          if (intakeParticipantsPreview) intakeParticipantsPreview.style.display = '';
+        })
+        .catch(() => {
+          if (intakeLoadingIndicator) intakeLoadingIndicator.style.display = 'none';
+          if (intakeNoParticipants) {
+            intakeNoParticipants.textContent = 'Failed to load participants. Please try again.';
+            intakeNoParticipants.style.display = '';
+          }
+        });
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      if (intakeEventSelect) {
+        intakeEventSelect.addEventListener('change', () => {
+          loadIntakeParticipants(intakeEventSelect.value);
+        });
+        if (intakeEventSelect.value) {
+          loadIntakeParticipants(intakeEventSelect.value);
+        }
+      }
+
+      if (intakeRefreshBtn) {
+        intakeRefreshBtn.addEventListener('click', () => {
+          if (intakeEventSelect && intakeEventSelect.value) {
+            loadIntakeParticipants(intakeEventSelect.value);
+          }
+        });
+      }
+
       window.addEventListener('beforeunload', revokeCurrentPreviewBlob);
     });
+    })();
   </script>
 </body>
 </html>

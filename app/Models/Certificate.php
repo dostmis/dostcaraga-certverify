@@ -17,10 +17,22 @@ class Certificate extends Model
 
     public const EMAIL_STATUS_SKIPPED_INVALID_EMAIL = 'skipped_invalid_email';
 
+    /**
+     * Deliberately withheld by an administrator - e.g. the address on file
+     * belongs to someone other than the participant. Never auto-resent.
+     */
+    public const EMAIL_STATUS_HELD = 'held';
+
     protected $fillable = [
         'certificate_code',
         'public_token',
         'participant_name',
+        'name_alignment',
+        'name_margin_left',
+        'name_margin_right',
+        'name_offset_x',
+        'name_offset_y',
+        'signature_offset_x',
         'email',
         'recipient_id',
         'gender',
@@ -34,6 +46,8 @@ class Certificate extends Model
         'training_title',
         'caption_text',
         'caption_alignment',
+        'qr_show_code',
+        'qr_show_link',
         'activity_type',
         'certificate_type',
         'recipient_type',
@@ -68,6 +82,13 @@ class Certificate extends Model
         'training_date_to' => 'date',
         'number_of_training_hours' => 'integer',
         'training_budget' => 'decimal:2',
+        'qr_show_code' => 'boolean',
+        'qr_show_link' => 'boolean',
+        'name_margin_left' => 'integer',
+        'name_margin_right' => 'integer',
+        'name_offset_x' => 'integer',
+        'name_offset_y' => 'integer',
+        'signature_offset_x' => 'integer',
         'expected_number_of_participants' => 'integer',
         'email_queued_at' => 'datetime',
         'email_last_attempt_at' => 'datetime',

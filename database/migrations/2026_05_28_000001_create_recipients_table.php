@@ -8,6 +8,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Guard: on databases migrated before this file was reordered, the
+        // `recipients` table already exists (it was previously created by a
+        // later-dated migration). Skip creation there so this reordered
+        // migration is a safe no-op.
+        if (Schema::hasTable('recipients')) {
+            return;
+        }
+
         Schema::create('recipients', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();

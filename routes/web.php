@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\AccountSettingsController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ParticipantIntakeAdminController;
 use App\Http\Controllers\Admin\UserAdminController;
+use App\Http\Controllers\CertificateAssetController;
 use App\Http\Controllers\CertificatePublicController;
 use App\Http\Controllers\Api\ParticipantSearchController;
 use App\Http\Controllers\Api\PsgcController;
@@ -36,9 +37,11 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
         Route::get('/certificates', [CertificateAdminController::class, 'index'])->name('admin.certs.index');
         Route::get('/certificates/approvals', [CertificateAdminController::class, 'approvals'])->name('admin.certs.approvals');
         Route::get('/certificates/create', [CertificateAdminController::class, 'create'])->name('admin.certs.create');
+        Route::get('/certificates/intake-event/{eventId}/participants', [CertificateAdminController::class, 'intakeEventParticipants'])->name('admin.certs.intake-participants');
         Route::post('/certificates/caption-suggest', [CertificateAdminController::class, 'suggestCaption'])->name('admin.certs.caption-suggest');
         Route::post('/certificates/live-preview', [CertificateAdminController::class, 'livePreview'])->name('admin.certs.live-preview');
         Route::post('/certificates/preview', [CertificateAdminController::class, 'preview'])->name('admin.certs.preview');
+        Route::post('/certificates/preview-all', [CertificateAdminController::class, 'previewAll'])->name('admin.certs.preview-all');
     });
 
     Route::middleware('role:regional_director,organizer')->group(function () {
@@ -91,6 +94,13 @@ Route::get('/print', [CertificatePublicController::class, 'print'])
     ->middleware('throttle:30,1')
     ->name('cert.print');
 
+// The signature is stamped into the PDFs straight off disk, but the on-screen
+// certificate needs a URL for it. Serving it through here rather than the
+// public disk keeps `storage/app/public/certificates` — which still holds
+// issued certificate PDFs under guessable names — off the web root.
+Route::get('/certificate-assets/regional-director-signature', [CertificateAssetController::class, 'regionalDirectorSignature'])
+    ->name('cert.assets.rd-signature');
+
 Route::get('/preview', [CertificatePublicController::class, 'preview'])
     ->middleware('throttle:30,1')
     ->name('cert.preview');
@@ -103,7 +113,7 @@ Route::get('/participant-intake/{token}', [ParticipantIntakeController::class, '
     ->middleware('throttle:60,1')
     ->name('participant.intake');
 Route::post('/participant-intake/{token}', [ParticipantIntakeController::class, 'store'])
-    ->middleware('throttle:10,1')
+    ->middleware('throttle:50,1')
     ->name('participant.intake.submit');
 
 Route::post('/webhooks/telegram/{secret}', TelegramWebhookController::class)

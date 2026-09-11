@@ -1607,6 +1607,7 @@ This will serve as our reference for post-training documentation and processing.
 
       function showVerifyPanel(participant) {
         selectedParticipant = participant;
+        searchInput.value = participant.participant_name || "";
         searchResults.style.display = 'none';
         searchResults.innerHTML = '';
         if (verifyPanel) verifyPanel.style.display = '';
@@ -1645,20 +1646,20 @@ This will serve as our reference for post-training documentation and processing.
             hideVerifyPanel();
             searchInput.value = participant.participant_name;
             searchInput.disabled = true;
-            // Ensure privacy consent is checked for auto-submit
+            // Keep consent enabled for the verified participant so the user can review
+            // the populated form before choosing to submit it.
             if (privacyConsentCheckbox && !privacyConsentCheckbox.checked) {
               privacyConsentCheckbox.checked = true;
               toggleIntakeFields();
             }
             autofillForm(participant).then(function() {
-              // Auto-submit after populating fields
-              if (form) {
-                var submitBtn = form.querySelector('.submit-btn');
-                if (submitBtn) {
-                  submitBtn.textContent = 'Registering...';
-                  submitBtn.disabled = true;
-                }
-                form.submit();
+              // Verification only unlocks the populated form. The participant
+              // must review the information and submit it manually.
+              var submitBtn = form ? form.querySelector('.submit-btn') : null;
+              if (submitBtn) {
+                submitBtn.textContent = 'Submit Form';
+                submitBtn.disabled = false;
+                submitBtn.focus();
               }
             });
           } else {
@@ -1787,16 +1788,30 @@ This will serve as our reference for post-training documentation and processing.
 
         if (!regionSel || !provinceSel || !citySel || !brgySel) return;
 
-        // Case-insensitive option lookup — stored DB values may differ in
-        // capitalisation from what the PSGC API currently returns (e.g.
-        // "REGION XIII (Caraga)" vs "Region XIII (Caraga)").
+        // Match stored intake values even when PSGC display names differ in
+        // casing, punctuation, accents, or common "City Of"/"Capital" labels.
+        function normalizeLocation(value) {
+          return String(value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/\([^)]*\)/g, " ")
+            .replace(/\b(city|municipality|capital|pob)\b/g, "")
+            .replace(/[.,\-]/g, " ")
+            .replace(/[().,\-]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        }
+
         function findOption(sel, target) {
           if (!target) return null;
-          var lower = target.toLowerCase();
+          var exact = String(target).toLowerCase();
+          var normalized = normalizeLocation(target);
           for (var i = 0; i < sel.options.length; i++) {
-            if (sel.options[i].value.toLowerCase() === lower) {
-              return sel.options[i].value;
-            }
+            if (sel.options[i].value.toLowerCase() === exact) return sel.options[i].value;
+          }
+          for (var j = 0; j < sel.options.length; j++) {
+            if (normalizeLocation(sel.options[j].value) === normalized) return sel.options[j].value;
           }
           return null;
         }
@@ -1930,6 +1945,7 @@ This will serve as our reference for post-training documentation and processing.
         var formSections = document.getElementById('intakeFormSections');
         if (formSections) formSections.style.display = 'none';
       }
+
     })();
   </script>
 </x-public-layout>

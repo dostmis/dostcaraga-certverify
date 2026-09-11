@@ -677,6 +677,45 @@
         margin-left: auto;
       }
     }
+
+    .cert-reason {
+      max-width: 320px;
+    }
+
+    .cert-reason > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .cert-reason > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .cert-reason-preview {
+      color: #334155;
+    }
+
+    .cert-reason-toggle {
+      font-size: 11px;
+      font-weight: 700;
+      color: #be123c;
+    }
+
+    .cert-reason[open] > summary .cert-reason-preview,
+    .cert-reason[open] > summary .cert-reason-toggle {
+      display: none;
+    }
+
+    .cert-reason-full {
+      margin: 0;
+      max-width: 320px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #334155;
+    }
   </style>
 
   <div class="cert-page">
@@ -939,7 +978,17 @@
                         @if ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_APPROVED)
                           {{ $endorsement->generated_count }} generated
                         @elseif ($endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_REJECTED && $endorsement->rejection_reason)
-                          {{ \Illuminate\Support\Str::limit($endorsement->rejection_reason, 80) }}
+                          @if (\Illuminate\Support\Str::length($endorsement->rejection_reason) > 80)
+                            <details class="cert-reason">
+                              <summary>
+                                <span class="cert-reason-preview">{{ \Illuminate\Support\Str::limit($endorsement->rejection_reason, 80) }}</span>
+                                <span class="cert-reason-toggle">Show full reason</span>
+                              </summary>
+                              <p class="cert-reason-full">{{ $endorsement->rejection_reason }}</p>
+                            </details>
+                          @else
+                            <span class="cert-reason-full">{{ $endorsement->rejection_reason }}</span>
+                          @endif
                         @else
                           &mdash;
                         @endif

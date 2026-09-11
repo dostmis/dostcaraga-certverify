@@ -35,11 +35,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Certificate generation shells out to Ghostscript, and the layout tests
+      # inspect rendered PDFs with poppler-utils - both are on the server.
+      - name: Install PDF tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ghostscript poppler-utils
+
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: mbstring, dom, xml, zip, gd, bcmath, intl, fileinfo, pgsql, pdo_pgsql
+          extensions: mbstring, dom, xml, zip, gd, imagick, bcmath, intl, fileinfo, pgsql, pdo_pgsql
           coverage: none
 
       - name: Cache Composer packages

@@ -30,7 +30,24 @@ class CertificateCustomDostProjectTest extends TestCase
         $this->assertSame('Juan Dela Cruz', $participants[0]['name']);
     }
 
-    public function test_custom_dost_project_option_is_rejected_for_non_sscp_programs(): void
+    public function test_other_programs_also_allow_a_custom_dost_project_value(): void
+    {
+        $controller = app(CertificateAdminController::class);
+        $method = new ReflectionMethod($controller, 'validatedCertificatePayload');
+        $method->setAccessible(true);
+
+        [$data] = $method->invoke($controller, $this->makeRequest([
+            'dost_program' => 'LGIA (Local Grants-in-Aid Program)',
+            'dost_project' => 'Others',
+            'dost_project_other' => 'Custom LGIA Project',
+        ]));
+
+        $this->assertSame('Custom LGIA Project', $data['dost_project']);
+        $this->assertNull($data['project_code']);
+        $this->assertSame('Project Funds', $data['source_of_funds']);
+    }
+
+    public function test_setup_still_requires_an_office_province_instead_of_a_custom_project(): void
     {
         $controller = app(CertificateAdminController::class);
         $method = new ReflectionMethod($controller, 'validatedCertificatePayload');
@@ -40,14 +57,13 @@ class CertificateCustomDostProjectTest extends TestCase
 
         try {
             $method->invoke($controller, $this->makeRequest([
-                'dost_program' => 'LGIA (Local Grants-in-Aid Program)',
+                'dost_program' => 'SETUP (Small Enterprise Technology Upgrading Program)',
                 'dost_project' => 'Others',
-                'dost_project_other' => 'Custom LGIA Project',
+                'dost_project_other' => 'Anything',
             ]));
         } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('dost_project', $exception->errors());
             $this->assertSame(
-                'Others, please specify is only available for SSCP.',
+                'Please select a valid DOST Office/Province for SETUP.',
                 $exception->errors()['dost_project'][0]
             );
 

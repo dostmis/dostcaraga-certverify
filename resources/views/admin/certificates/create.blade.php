@@ -182,6 +182,18 @@
       transition: border-color 140ms ease, box-shadow 140ms ease;
     }
 
+    /* The rule above is written for text fields. Radios and checkboxes must keep
+       their native size, or they stretch to the full row width and push their
+       own label out of the card (overlapping the next one). */
+    input[type="radio"],
+    input[type="checkbox"] {
+      width: auto;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+    }
+
     input:focus,
     select:focus {
       border-color: #67a2d1;
@@ -1500,6 +1512,9 @@
     }
 
     .source-option input[type="radio"] {
+      flex: 0 0 auto;
+      width: 16px;
+      height: 16px;
       margin-top: 3px;
       accent-color: var(--accent);
     }
@@ -1508,6 +1523,8 @@
       display: flex;
       flex-direction: column;
       gap: 2px;
+      flex: 1;
+      min-width: 0;
     }
 
     .source-option-title {

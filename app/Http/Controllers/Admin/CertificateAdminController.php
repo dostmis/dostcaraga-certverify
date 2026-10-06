@@ -693,11 +693,6 @@ class CertificateAdminController extends Controller
             && !$this->isNationalRegularProgram($program);
     }
 
-    private function isSscpProgram(string $program): bool
-    {
-        return $program === $this->sscpProgramLabel();
-    }
-
     private function dostProjectCodeMap(): array
     {
         $map = [];
@@ -2010,13 +2005,11 @@ SYS;
             $data['dost_project'] = self::NOT_APPLICABLE;
             $data['project_code'] = self::NOT_APPLICABLE;
         } else {
+            // "Others, please specify" is offered for every program that uses a
+            // project list, so accept it for all of them. SETUP and the
+            // National/Regular Program never reach here - they repurpose this
+            // field for the office/province and "Not Applicable".
             $usesCustomDostProject = $data['dost_project'] === self::CUSTOM_DOST_PROJECT_OPTION;
-
-            if ($usesCustomDostProject && !$this->isSscpProgram($data['dost_program'])) {
-                throw ValidationException::withMessages([
-                    'dost_project' => 'Others, please specify is only available for SSCP.',
-                ]);
-            }
 
             if (in_array($data['dost_project'], $this->setupOfficeProvinces(), true)) {
                 throw ValidationException::withMessages([

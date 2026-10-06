@@ -25,7 +25,8 @@ class ResendFailedCertificateEmails extends Command
         {--skip-smtp-check : Queue without verifying SMTP credentials first}
         {--include-never-queued : Also include certificates that were never queued at all}
         {--redeliver-sent-since= : Also re-send certificates already marked sent on/after this date (YYYY-MM-DD). Use to recover from a period when the mail provider accepted messages but then blocked them.}
-        {--only-email= : Restrict the batch to a single recipient address (useful for targeted recovery)}';
+        {--only-email= : Restrict the batch to a single recipient address (useful for targeted recovery)}
+        {--interval=0 : Seconds between queued sends. Spreads the batch out so Gmail does not throttle logins (454).}';
 
     protected $description = 'Requeue certificate emails that were never delivered, in batches that respect the daily sending limit';
 
@@ -33,6 +34,7 @@ class ResendFailedCertificateEmails extends Command
     {
         $limit = max(1, (int) $this->option('limit'));
         $dryRun = (bool) $this->option('dry-run');
+        $interval = max(0, (int) $this->option('interval'));
 
         if (! $dryRun && ! $this->option('skip-smtp-check') && ! $this->smtpCredentialsWork()) {
             return self::FAILURE;
@@ -82,9 +84,10 @@ class ResendFailedCertificateEmails extends Command
         $queued = 0;
         $skippedInvalid = 0;
         $skippedMissingPdf = 0;
+        $startAt = now();
 
         $query->orderBy('created_at')->limit($limit)->each(
-            function (Certificate $certificate) use (&$queued, &$skippedInvalid, &$skippedMissingPdf, $dryRun) {
+            function (Certificate $certificate) use (&$queued, &$skippedInvalid, &$skippedMissingPdf, $dryRun, $interval, $startAt) {
                 $email = trim((string) $certificate->email);
 
                 if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -116,16 +119,28 @@ class ResendFailedCertificateEmails extends Command
                         'email_failure_message' => null,
                     ])->save();
 
-                    SendCertificateEmailJob::dispatch($certificate->id);
+                    // Stagger sends: each job becomes available one interval
+                    // after the previous, so the worker logs in to SMTP at a
+                    // steady pace instead of in a burst.
+                    SendCertificateEmailJob::dispatch($certificate->id)
+                        ->delay($startAt->copy()->addSeconds($queued * $interval));
                 }
 
+                $sendAt = $interval > 0 ? '  at ' . $startAt->copy()->addSeconds($queued * $interval)->format('Y-m-d H:i:s') : '';
                 $queued++;
-                $this->line("  queued                {$certificate->certificate_code}  {$email}");
+                $this->line("  queued                {$certificate->certificate_code}  {$email}{$sendAt}");
             }
         );
 
         $this->newLine();
         $this->info(($dryRun ? 'Would queue' : 'Queued') . ": {$queued}");
+        if ($interval > 0 && $queued > 0) {
+            $this->line(sprintf(
+                'Spaced %ds apart; last send at %s.',
+                $interval,
+                $startAt->copy()->addSeconds(($queued - 1) * $interval)->format('Y-m-d H:i:s')
+            ));
+        }
         if ($skippedInvalid > 0) {
             $this->warn("Skipped (invalid email): {$skippedInvalid}");
         }

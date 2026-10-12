@@ -123,7 +123,7 @@ class EndorsementDeliveryTrackingTest extends TestCase
             ->assertSee('2 sent')
             ->assertSee('1 failed')
             ->assertSee('1 no email')
-            ->assertSee(route('admin.certs.endorsements.delivery', ['id' => $endorsement->id]), false);
+            ->assertSee(route('admin.certs.endorsements.show', ['id' => $endorsement->id]), false);
     }
 
     public function test_approved_packages_without_linked_certificates_say_not_tracked(): void
@@ -157,14 +157,15 @@ class EndorsementDeliveryTrackingTest extends TestCase
         $this->sentCertificate($endorsement, ['participant_name' => 'Delivered Participant']);
 
         $this->actingAs($organizer)
-            ->get(route('admin.certs.endorsements.delivery', ['id' => $endorsement->id]))
+            ->get(route('admin.certs.endorsements.show', ['id' => $endorsement->id]))
             ->assertOk()
             ->assertSee('Delivery Tracking Training')
             ->assertSee('Busy Server Participant')
             ->assertSee('The mail server was temporarily busy')
             ->assertDontSee('Expected response code')
             ->assertSee('Typo Address Participant')
-            ->assertSee('is not a valid email address')
+            ->assertSee('The email address given for this participant is not valid.')
+            ->assertDontSee('someone-at-example.com')
             ->assertSee('Delivered Participant');
     }
 
@@ -181,7 +182,7 @@ class EndorsementDeliveryTrackingTest extends TestCase
         ]);
 
         $this->actingAs($organizer)
-            ->get(route('admin.certs.endorsements.delivery', ['id' => $endorsement->id, 'problems' => 1]))
+            ->get(route('admin.certs.endorsements.show', ['id' => $endorsement->id, 'problems' => 1]))
             ->assertOk()
             ->assertSee('Missing Email Participant')
             ->assertDontSee('Delivered Participant');
@@ -192,7 +193,7 @@ class EndorsementDeliveryTrackingTest extends TestCase
         $endorsement = $this->approvedEndorsement($this->user(User::ROLE_ORGANIZER));
 
         $this->actingAs($this->user(User::ROLE_UNIT_SUPERVISOR))
-            ->get(route('admin.certs.endorsements.delivery', ['id' => $endorsement->id]))
+            ->get(route('admin.certs.endorsements.show', ['id' => $endorsement->id]))
             ->assertForbidden();
     }
 
@@ -202,7 +203,7 @@ class EndorsementDeliveryTrackingTest extends TestCase
         $this->sentCertificate($endorsement);
 
         $this->actingAs($this->user(User::ROLE_REGIONAL_DIRECTOR))
-            ->get(route('admin.certs.endorsements.delivery', ['id' => $endorsement->id]))
+            ->get(route('admin.certs.endorsements.show', ['id' => $endorsement->id]))
             ->assertOk();
     }
 

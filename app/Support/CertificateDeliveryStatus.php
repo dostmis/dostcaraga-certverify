@@ -147,7 +147,8 @@ final class CertificateDeliveryStatus
                 default => 'Queued to be sent.',
             },
             self::NO_EMAIL => 'No email address was provided for this participant.',
-            self::INVALID_EMAIL => sprintf('"%s" is not a valid email address.', trim((string) $certificate->email)),
+            // Endorsers see names only, so the address itself is not repeated here.
+            self::INVALID_EMAIL => 'The email address given for this participant is not valid.',
             self::HELD => $message !== '' ? $message : 'Held back by the administrator.',
             self::FAILED => self::explainFailure($message),
         };

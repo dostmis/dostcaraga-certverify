@@ -961,7 +961,12 @@
                     @endphp
                     <tr>
                       <td class="cert-code">{{ $endorsement->training_title }}</td>
-                      <td class="cert-td-now">{{ $endorsement->participants_count }}</td>
+                      <td class="cert-td-now">
+                        <div class="cert-link-row">
+                          <span>{{ $endorsement->participants_count }}</span>
+                          <a class="cert-mini-btn cert-mini-verify" href="{{ route('admin.certs.endorsements.show', ['id' => $endorsement->id]) }}">View participants</a>
+                        </div>
+                      </td>
                       <td class="cert-td-now">{{ $submittedAt ? $submittedAt->format('M j, Y g:ia') : '-' }}</td>
                       <td class="cert-td-now">{{ $endorsement->issuing_office }}</td>
                       <td>
@@ -990,7 +995,7 @@
                                 <span class="cert-status {{ \App\Support\CertificateDeliveryStatus::badgeClass($outcome) }}">{{ $deliveryCounts[$outcome] }} {{ strtolower(\App\Support\CertificateDeliveryStatus::label($outcome)) }}</span>
                               @endif
                             @endforeach
-                            <a class="cert-mini-btn" href="{{ route('admin.certs.endorsements.delivery', ['id' => $endorsement->id]) }}">View delivery</a>
+                            <a class="cert-mini-btn" href="{{ route('admin.certs.endorsements.show', ['id' => $endorsement->id]) }}">View delivery</a>
                           </div>
                         @endif
                       </td>

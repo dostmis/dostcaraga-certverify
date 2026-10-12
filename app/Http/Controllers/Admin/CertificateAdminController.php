@@ -202,18 +202,32 @@ class CertificateAdminController extends Controller
     }
 
     /**
-     * Per-participant email delivery for one approved endorsement package.
-     * Visible to the endorser who submitted it and to the Regional Director.
+     * The delivery page became the package details page; keep old links working.
      */
     public function endorsementDelivery(Request $request, int $id)
+    {
+        return redirect()->route('admin.certs.endorsements.show', array_filter([
+            'id' => $id,
+            'problems' => $request->boolean('problems') ? 1 : null,
+        ]));
+    }
+
+    /**
+     * One endorsement package and its participants, for the endorser who
+     * submitted it and for the Regional Director. Approved packages list the
+     * issued certificates with their PDFs and email delivery; packages without
+     * linked certificates list the names from the uploaded participants file.
+     * Email addresses are deliberately not shown.
+     */
+    public function showEndorsement(Request $request, int $id)
     {
         $user = $request->user();
         $isRegionalDirector = $this->isRegionalDirector($user);
         $endorsement = CertificateEndorsement::with('submitter')->findOrFail($id);
+        $this->ensureEndorsementViewAccess($user, $endorsement);
 
-        if (!$isRegionalDirector && (int) $endorsement->submitted_by !== (int) $user?->id) {
-            abort(403, 'You can only view delivery for certificate packages you endorsed.');
-        }
+        $search = trim((string) $request->query('q', ''));
+        $matchesSearch = fn (string $name): bool => $search === '' || Str::contains($name, $search, true);
 
         $outcomeOrder = array_flip(\App\Support\CertificateDeliveryStatus::outcomes());
         $rows = $endorsement->certificates()
@@ -236,9 +250,27 @@ class CertificateAdminController extends Controller
         $counts = $rows->countBy('outcome')->all();
         $problemCount = $rows->filter(fn (array $row) => \App\Support\CertificateDeliveryStatus::isProblem($row['outcome']))->count();
         $showProblemsOnly = $request->boolean('problems');
-        $visibleRows = $showProblemsOnly
-            ? $rows->filter(fn (array $row) => \App\Support\CertificateDeliveryStatus::isProblem($row['outcome']))->values()
-            : $rows;
+        $visibleRows = $rows
+            ->filter(fn (array $row) => !$showProblemsOnly || \App\Support\CertificateDeliveryStatus::isProblem($row['outcome']))
+            ->filter(fn (array $row) => $matchesSearch((string) $row['certificate']->participant_name))
+            ->values();
+
+        // Without linked certificates (pending, rejected, or approved before
+        // tracking), the uploaded participants file is the only list of names.
+        $fileNames = [];
+        $fileNamesError = null;
+        if ($rows->isEmpty()) {
+            try {
+                $fileNames = $this->previewParticipantNames(
+                    $this->parseParticipantStoragePath((string) $endorsement->participants_file_path)
+                );
+            } catch (\Throwable $e) {
+                report($e);
+                $fileNamesError = 'The participant list for this package could not be read. Please contact the administrator.';
+            }
+        }
+        $fileNamesTotal = count($fileNames);
+        $visibleFileNames = array_values(array_filter($fileNames, $matchesSearch));
 
         $payload = is_array($endorsement->payload) ? $endorsement->payload : [];
         $pendingEndorsementsCount = CertificateEndorsement::query()
@@ -246,7 +278,7 @@ class CertificateAdminController extends Controller
             ->where('status', CertificateEndorsement::STATUS_ENDORSED)
             ->count();
 
-        return view('admin.certificates.endorsement-delivery', [
+        return view('admin.certificates.endorsement-show', [
             'endorsement' => $endorsement,
             'trainingTitle' => $payload['training_title'] ?? 'Untitled',
             'issuingOffice' => $payload['issuing_office'] ?? '',
@@ -256,8 +288,41 @@ class CertificateAdminController extends Controller
             'counts' => $counts,
             'problemCount' => $problemCount,
             'showProblemsOnly' => $showProblemsOnly,
+            'fileNames' => $visibleFileNames,
+            'fileNamesTotal' => $fileNamesTotal,
+            'fileNamesError' => $fileNamesError,
+            'search' => $search,
             'pendingEndorsementsCount' => $pendingEndorsementsCount,
         ]);
+    }
+
+    /**
+     * Opens one certificate PDF from a package, in the browser. The certificate
+     * must belong to that package, so an endorser cannot reach certificates
+     * from other packages by changing the ids in the URL.
+     */
+    public function viewEndorsementCertificate(Request $request, int $id, int $certificateId)
+    {
+        $endorsement = CertificateEndorsement::findOrFail($id);
+        $this->ensureEndorsementViewAccess($request->user(), $endorsement);
+
+        $certificate = $endorsement->certificates()->findOrFail($certificateId);
+        $storage = $this->resolveCertificateStorage((string) $certificate->stamped_pdf_path);
+        if (!$storage) {
+            abort(404, 'The certificate file is missing. Please contact the administrator.');
+        }
+
+        return response()->file($storage['absolute'], [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $certificate->certificate_code . '.pdf"',
+        ]);
+    }
+
+    private function ensureEndorsementViewAccess(?User $user, CertificateEndorsement $endorsement): void
+    {
+        if (!$this->isRegionalDirector($user) && (int) $endorsement->submitted_by !== (int) $user?->id) {
+            abort(403, 'You can only view certificate packages you endorsed.');
+        }
     }
 
     public function approvals(Request $request)

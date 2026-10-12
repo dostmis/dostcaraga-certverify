@@ -1,7 +1,17 @@
-<x-admin-layout title="Certificate Delivery">
+<x-admin-layout title="Endorsed Certificates">
   @php
     $deliveryStatus = \App\Support\CertificateDeliveryStatus::class;
     $submitterName = $endorsement->submitter?->name ?? ('User #' . ($endorsement->submitted_by ?? 'N/A'));
+    $isApproved = $endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_APPROVED;
+    $isRejected = $endorsement->status === \App\Models\CertificateEndorsement::STATUS_RD_REJECTED;
+    $hasCertificates = $totalCount > 0;
+    $submittedAt = $endorsement->created_at?->copy()->timezone('Asia/Manila');
+    $decidedAt = ($isApproved ? $endorsement->rd_approved_at : ($isRejected ? $endorsement->rd_rejected_at : null))?->copy()->timezone('Asia/Manila');
+    $listRoute = fn (array $params = []) => route('admin.certs.endorsements.show', array_filter(array_merge([
+      'id' => $endorsement->id,
+      'q' => $search !== '' ? $search : null,
+      'problems' => $showProblemsOnly ? 1 : null,
+    ], $params), fn ($value) => $value !== null));
   @endphp
 
   <style>
@@ -248,6 +258,110 @@
       background: #ecfeff;
       border-color: #a5f3fc;
     }
+
+    .dl-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 24px;
+      margin: 0 0 18px;
+      color: #475569;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .dl-meta strong {
+      color: #0f172a;
+    }
+
+    .dl-reject {
+      margin: 0 0 18px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #fda4af;
+      background: #fff1f2;
+      color: #9f1239;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .dl-reject p {
+      margin: 4px 0 0;
+      white-space: pre-line;
+    }
+
+    .dl-section-title {
+      margin: 24px 0 10px;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .dl-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 20px 0 12px;
+    }
+
+    .dl-toolbar .dl-tabs {
+      margin: 0;
+    }
+
+    .dl-search {
+      display: flex;
+      gap: 8px;
+      flex: 1 1 260px;
+      max-width: 420px;
+    }
+
+    .dl-search input {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 14px;
+    }
+
+    .dl-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      border: 1px solid #0f4f8c;
+      border-radius: 10px;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #0f4f8c;
+      background: #fff;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .dl-btn:hover {
+      color: #fff;
+      background: #0f4f8c;
+    }
+
+    .dl-index {
+      width: 48px;
+      color: #94a3b8;
+      font-weight: 700;
+    }
+
+    .status-rd-approved {
+      color: #047857;
+      background: #ecfdf5;
+      border-color: #6ee7b7;
+    }
+
+    .status-rd-rejected {
+      color: #be123c;
+      background: #fff1f2;
+      border-color: #fda4af;
+    }
   </style>
 
   <div class="dl-page">
@@ -255,7 +369,7 @@
       <header class="dl-hero">
         <div>
           <a class="dl-back" href="{{ route('admin.certs.index', ['group' => 'endorsements']) }}">&larr; My Certificate Endorsements</a>
-          <div><span class="dl-chip">Certificate delivery</span></div>
+          <div><span class="dl-chip">Endorsed certificates</span></div>
           <h1 class="dl-title">{{ $trainingTitle }}</h1>
           <p class="dl-subtitle">
             {{ $dateRange }}@if ($issuingOffice !== '') &middot; {{ $issuingOffice }}@endif &middot; Endorsed by {{ $submitterName }}
@@ -272,11 +386,31 @@
       </header>
 
       <div class="dl-body">
-        @if ($endorsement->status !== \App\Models\CertificateEndorsement::STATUS_RD_APPROVED)
-          <p class="dl-empty">This package has not been approved yet, so no certificates have been sent.</p>
-        @elseif ($totalCount === 0)
-          <p class="dl-empty">Delivery for this package is not tracked yet. It was approved before tracking was added.</p>
-        @else
+        <div class="dl-meta">
+          <span>Status:
+            @if ($isApproved)
+              <span class="cert-status status-rd-approved">Approved</span>
+            @elseif ($isRejected)
+              <span class="cert-status status-rd-rejected">Rejected</span>
+            @else
+              <span class="cert-status status-endorsed">Pending Approval</span>
+            @endif
+          </span>
+          <span>Submitted: <strong>{{ $submittedAt ? $submittedAt->format('M j, Y g:ia') : '-' }}</strong></span>
+          @if ($decidedAt)
+            <span>{{ $isApproved ? 'Approved' : 'Rejected' }}: <strong>{{ $decidedAt->format('M j, Y g:ia') }}</strong></span>
+          @endif
+          <span>Participants: <strong>{{ number_format($hasCertificates ? $totalCount : $fileNamesTotal) }}</strong></span>
+        </div>
+
+        @if ($isRejected && $endorsement->rejection_reason)
+          <div class="dl-reject">
+            <strong>Reason for rejection</strong>
+            <p>{{ $endorsement->rejection_reason }}</p>
+          </div>
+        @endif
+
+        @if ($hasCertificates)
           <section class="dl-summary">
             @foreach ($deliveryStatus::outcomes() as $outcome)
               @if (($counts[$outcome] ?? 0) > 0)
@@ -293,22 +427,26 @@
             so if a participant says they did not receive it, ask them to check spam and let the administrator know.
           </p>
 
-          <nav class="dl-tabs">
-            <a class="dl-tab {{ $showProblemsOnly ? '' : 'active' }}" href="{{ route('admin.certs.endorsements.delivery', ['id' => $endorsement->id]) }}">
-              All ({{ number_format($totalCount) }})
-            </a>
-            <a class="dl-tab {{ $showProblemsOnly ? 'active' : '' }}" href="{{ route('admin.certs.endorsements.delivery', ['id' => $endorsement->id, 'problems' => 1]) }}">
-              Needs attention ({{ number_format($problemCount) }})
-            </a>
-          </nav>
+          <div class="dl-toolbar">
+            <nav class="dl-tabs">
+              <a class="dl-tab {{ $showProblemsOnly ? '' : 'active' }}" href="{{ $listRoute(['problems' => null]) }}">
+                All ({{ number_format($totalCount) }})
+              </a>
+              <a class="dl-tab {{ $showProblemsOnly ? 'active' : '' }}" href="{{ $listRoute(['problems' => 1]) }}">
+                Needs attention ({{ number_format($problemCount) }})
+              </a>
+            </nav>
+            @include('admin.certificates.partials.endorsement-name-search')
+          </div>
 
           <div class="dl-table-scroll">
             <table class="dl-table">
               <thead>
                 <tr>
+                  <th>#</th>
                   <th>Participant</th>
-                  <th>Email</th>
-                  <th>Status</th>
+                  <th>Certificate</th>
+                  <th>Email delivery</th>
                   <th>What happened</th>
                   <th>Last update</th>
                 </tr>
@@ -318,17 +456,22 @@
                   @php
                     $certificate = $row['certificate'];
                     $lastUpdate = $row['last_update']?->copy()->timezone('Asia/Manila');
+                    $certificateStatus = (string) ($certificate->status ?? '');
                   @endphp
                   <tr>
+                    <td class="dl-index">{{ $loop->iteration }}</td>
                     <td>
                       <span class="dl-name">{{ $certificate->participant_name }}</span>
                       <span class="dl-code">{{ $certificate->certificate_code }}</span>
                     </td>
                     <td>
-                      @if (trim((string) $certificate->email) !== '')
-                        {{ $certificate->email }}
+                      @if ($certificate->stamped_pdf_path)
+                        <a class="dl-btn" href="{{ route('admin.certs.endorsements.certificate', ['id' => $endorsement->id, 'certificateId' => $certificate->id]) }}" target="_blank" rel="noopener">View PDF</a>
                       @else
-                        <span class="dl-muted">No email</span>
+                        <span class="dl-muted">No PDF</span>
+                      @endif
+                      @if ($certificateStatus !== '' && $certificateStatus !== 'valid')
+                        <span class="cert-status {{ in_array($certificateStatus, ['revoked', 'invalid'], true) ? 'status-' . $certificateStatus : 'status-default' }}">{{ ucfirst($certificateStatus) }}</span>
                       @endif
                     </td>
                     <td>
@@ -345,12 +488,68 @@
                   </tr>
                 @empty
                   <tr>
-                    <td colspan="5" class="dl-empty">Nothing needs attention. Every certificate in this package was sent or is waiting to send.</td>
+                    <td colspan="6" class="dl-empty">
+                      @if ($search !== '')
+                        No participant matches "{{ $search }}".
+                      @else
+                        Nothing needs attention. Every certificate in this package was sent or is waiting to send.
+                      @endif
+                    </td>
                   </tr>
                 @endforelse
               </tbody>
             </table>
           </div>
+        @else
+          <p class="dl-note">
+            @if ($isApproved)
+              Certificates for this package were issued before they could be matched to it, so they cannot be opened from here yet.
+              The names below are from the participant list you uploaded.
+            @elseif ($isRejected)
+              This package was not approved, so no certificates were issued. The names below are from the participant list you uploaded.
+            @else
+              This package is waiting for the Regional Director's approval, so certificates have not been issued yet.
+              The names below are from the participant list you uploaded.
+            @endif
+          </p>
+
+          @if ($fileNamesError)
+            <p class="dl-empty">{{ $fileNamesError }}</p>
+          @else
+            <div class="dl-toolbar">
+              <h2 class="dl-section-title" style="margin: 0;">Participants ({{ number_format($fileNamesTotal) }})</h2>
+              @include('admin.certificates.partials.endorsement-name-search')
+            </div>
+
+            <div class="dl-table-scroll">
+              <table class="dl-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Participant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @forelse ($fileNames as $name)
+                    <tr>
+                      <td class="dl-index">{{ $loop->iteration }}</td>
+                      <td><span class="dl-name">{{ $name }}</span></td>
+                    </tr>
+                  @empty
+                    <tr>
+                      <td colspan="2" class="dl-empty">
+                        @if ($search !== '')
+                          No participant matches "{{ $search }}".
+                        @else
+                          No participant names were found in the uploaded list.
+                        @endif
+                      </td>
+                    </tr>
+                  @endforelse
+                </tbody>
+              </table>
+            </div>
+          @endif
         @endif
       </div>
     </div>

@@ -44,6 +44,7 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
         Route::post('/certificates/preview-all', [CertificateAdminController::class, 'previewAll'])->name('admin.certs.preview-all');
         // Endorsers see their own packages; the controller enforces ownership.
         Route::get('/certificates/endorsements/{id}', [CertificateAdminController::class, 'showEndorsement'])->whereNumber('id')->name('admin.certs.endorsements.show');
+        Route::get('/certificates/endorsements/{id}/sample-pdf', [CertificateAdminController::class, 'previewEndorsementForEndorser'])->whereNumber('id')->middleware('throttle:20,1')->name('admin.certs.endorsements.sample');
         Route::get('/certificates/endorsements/{id}/certificates/{certificateId}/pdf', [CertificateAdminController::class, 'viewEndorsementCertificate'])->whereNumber(['id', 'certificateId'])->name('admin.certs.endorsements.certificate');
         Route::get('/certificates/endorsements/{id}/delivery', [CertificateAdminController::class, 'endorsementDelivery'])->name('admin.certs.endorsements.delivery');
     });

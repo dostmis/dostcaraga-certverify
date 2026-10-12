@@ -288,6 +288,8 @@ class CertificateAdminController extends Controller
             'counts' => $counts,
             'problemCount' => $problemCount,
             'showProblemsOnly' => $showProblemsOnly,
+            // "Preview certificate" opens a real issued certificate when there is one.
+            'previewCertificateId' => $rows->first(fn (array $row) => !empty($row['certificate']->stamped_pdf_path))['certificate']->id ?? null,
             'fileNames' => $visibleFileNames,
             'fileNamesTotal' => $fileNamesTotal,
             'fileNamesError' => $fileNamesError,
@@ -3069,9 +3071,15 @@ SYS;
         int $signatureOffsetPx = 0,
         ?array &$layoutReport = null,
         ?float $nameMarginRight = null,
-        int $nameOffsetYPx = 0
+        int $nameOffsetYPx = 0,
+        bool $endorserPreview = false
     ): string
     {
+        // $endorserPreview: a sample for an endorser, not the Regional Director.
+        // The signature space is still reserved so the layout matches the real
+        // certificate, but the signature itself is left off and a banner marks
+        // the page, so an unapproved sample cannot pass for an issued certificate.
+
         // Populated as the pages are stamped so callers (the live preview, batch
         // generation) can warn when the text did not fit the space available.
         // The top-level entries describe the first participant so single-name
@@ -3278,7 +3286,9 @@ SYS;
                         }
                     }
 
-                    if ($applyRegionalDirectorESign) {
+                    if ($endorserPreview) {
+                        $this->stampEndorserPreviewBanner($pdf, $size);
+                    } elseif ($applyRegionalDirectorESign) {
                         $stamped = $this->stampRegionalDirectorSignatureBlock($pdf, $size, $signatureOffsetPx);
                         if ($participantIndex === 0) {
                             $layoutReport['signature_stamped'] = $stamped;
@@ -3951,6 +3961,25 @@ SYS;
      *
      * @param  array<string, mixed>  $pageSize
      */
+    /**
+     * A red band across the top of an endorser's sample certificate.
+     *
+     * @param  array<string, mixed>  $pageSize
+     */
+    private function stampEndorserPreviewBanner(Fpdi $pdf, array $pageSize): void
+    {
+        $width = (float) ($pageSize['width'] ?? 0.0);
+        $text = 'PREVIEW ONLY - NOT AN ISSUED CERTIFICATE';
+
+        $pdf->SetFillColor(190, 18, 60);
+        // Kept thin so it stays clear of the logo most templates put at the top.
+        $pdf->Rect(0, 0, $width, 6, 'F');
+        $pdf->SetFont('Helvetica', 'B', 8);
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->Text(max(0.0, ($width - $pdf->GetStringWidth($text)) / 2), 4.1, $text);
+        $pdf->SetTextColor(0, 0, 0);
+    }
+
     private function captionBottomBound(array $pageSize, bool $applyRegionalDirectorESign): float
     {
         $pageHeight = (float) ($pageSize['height'] ?? 0.0);
@@ -4391,14 +4420,6 @@ SYS;
         $this->ensureRegionalDirectorAction($request->user());
 
         $endorsement = CertificateEndorsement::findOrFail($id);
-        if (empty($endorsement->template_pdf_path)) {
-            abort(404, 'Uploaded template PDF not available for preview.');
-        }
-
-        $storage = $this->resolveCertificateStorage((string) $endorsement->template_pdf_path);
-        if (!$storage) {
-            abort(404, 'Uploaded template PDF is missing in storage.');
-        }
 
         // ?all=1 renders every participant so the reviewer can page through the
         // whole batch; without it the preview stays a single representative page.
@@ -4409,6 +4430,59 @@ SYS;
 
         $totalNames = count($names);
         $names = array_slice($names, 0, self::PREVIEW_ALL_MAX_PARTICIPANTS);
+        $layoutReport = null;
+        $pdfContent = $this->renderEndorsementSample($endorsement, $names, false, $layoutReport);
+
+        return response($pdfContent, 200, $this->previewAllHeaders(
+            $this->endorsementPdfFilename($endorsement, $previewAll ? 'preview-all' : 'preview'),
+            count($names),
+            $totalNames,
+            $layoutReport
+        ));
+    }
+
+    /**
+     * A sample certificate for the endorser, built from the uploaded template
+     * with the first participant's name. Unlike the Regional Director's preview
+     * it carries a "preview only" banner and no signature.
+     */
+    public function previewEndorsementForEndorser(Request $request, int $id)
+    {
+        $endorsement = CertificateEndorsement::findOrFail($id);
+        $this->ensureEndorsementViewAccess($request->user(), $endorsement);
+
+        $layoutReport = null;
+        $pdfContent = $this->renderEndorsementSample(
+            $endorsement,
+            [$this->firstEndorsementParticipantName($endorsement)],
+            true,
+            $layoutReport
+        );
+
+        return response($pdfContent, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $this->endorsementPdfFilename($endorsement, 'sample') . '"',
+            'Cache-Control' => 'no-store, private',
+        ]);
+    }
+
+    /**
+     * @param  list<string>  $names
+     */
+    private function renderEndorsementSample(
+        CertificateEndorsement $endorsement,
+        array $names,
+        bool $endorserPreview,
+        ?array &$layoutReport = null
+    ): string {
+        if (empty($endorsement->template_pdf_path)) {
+            abort(404, 'Uploaded template PDF not available for preview.');
+        }
+
+        $storage = $this->resolveCertificateStorage((string) $endorsement->template_pdf_path);
+        if (!$storage) {
+            abort(404, 'Uploaded template PDF is missing in storage.');
+        }
 
         // The caption lives in the endorsement payload (see buildTrainingPayload),
         // not as a column on the endorsement row, so read it from there to match
@@ -4438,19 +4512,17 @@ SYS;
                 $this->normalizeOffsetPx($endorsementPayload['signature_offset_x'] ?? null),
                 $layoutReport,
                 (float) $endorsementMargins[1],
-                $this->normalizeOffsetPx($endorsementPayload['name_offset_y'] ?? null)
+                $this->normalizeOffsetPx($endorsementPayload['name_offset_y'] ?? null),
+                $endorserPreview
             );
         } catch (\Throwable $e) {
             report($e);
-            abort(422, $e->getMessage());
+            abort(422, $endorserPreview
+                ? 'The certificate preview could not be generated. Please contact the administrator.'
+                : $e->getMessage());
         }
 
-        return response($pdfContent, 200, $this->previewAllHeaders(
-            $this->endorsementPdfFilename($endorsement, $previewAll ? 'preview-all' : 'preview'),
-            count($names),
-            $totalNames,
-            $layoutReport
-        ));
+        return $pdfContent;
     }
 
     public function downloadEndorsementParticipants(Request $request, int $id): StreamedResponse

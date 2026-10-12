@@ -476,6 +476,17 @@
       white-space: nowrap;
     }
 
+    .cert-title-link {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .cert-title-link:hover,
+    .cert-title-link:focus-visible {
+      color: #0f4f8c;
+      text-decoration: underline;
+    }
+
     .cert-name {
       color: #0f172a !important;
       font-weight: 700;
@@ -960,7 +971,9 @@
                         : null;
                     @endphp
                     <tr>
-                      <td class="cert-code">{{ $endorsement->training_title }}</td>
+                      <td class="cert-code">
+                        <a class="cert-title-link" href="{{ route('admin.certs.endorsements.show', ['id' => $endorsement->id]) }}" title="View participants and preview the certificate">{{ $endorsement->training_title }}</a>
+                      </td>
                       <td class="cert-td-now">
                         <div class="cert-link-row">
                           <span>{{ $endorsement->participants_count }}</span>

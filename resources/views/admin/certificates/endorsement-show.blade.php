@@ -7,6 +7,11 @@
     $hasCertificates = $totalCount > 0;
     $submittedAt = $endorsement->created_at?->copy()->timezone('Asia/Manila');
     $decidedAt = ($isApproved ? $endorsement->rd_approved_at : ($isRejected ? $endorsement->rd_rejected_at : null))?->copy()->timezone('Asia/Manila');
+    // A real issued certificate when there is one, otherwise a sample built
+    // from the uploaded template.
+    $previewUrl = $previewCertificateId
+      ? route('admin.certs.endorsements.certificate', ['id' => $endorsement->id, 'certificateId' => $previewCertificateId])
+      : (!empty($endorsement->template_pdf_path) ? route('admin.certs.endorsements.sample', ['id' => $endorsement->id]) : null);
     $listRoute = fn (array $params = []) => route('admin.certs.endorsements.show', array_filter(array_merge([
       'id' => $endorsement->id,
       'q' => $search !== '' ? $search : null,
@@ -345,6 +350,23 @@
       background: #0f4f8c;
     }
 
+    .dl-btn-primary {
+      color: #fff;
+      background: #0f4f8c;
+    }
+
+    .dl-btn-primary:hover {
+      background: #0b3d6d;
+    }
+
+    .dl-meta {
+      align-items: center;
+    }
+
+    .dl-preview {
+      margin-left: auto;
+    }
+
     .dl-index {
       width: 48px;
       color: #94a3b8;
@@ -401,6 +423,12 @@
             <span>{{ $isApproved ? 'Approved' : 'Rejected' }}: <strong>{{ $decidedAt->format('M j, Y g:ia') }}</strong></span>
           @endif
           <span>Participants: <strong>{{ number_format($hasCertificates ? $totalCount : $fileNamesTotal) }}</strong></span>
+          @if ($previewUrl)
+            <a class="dl-btn dl-btn-primary dl-preview" href="{{ $previewUrl }}" target="_blank" rel="noopener"
+              title="{{ $previewCertificateId ? 'Opens an issued certificate from this package' : 'Opens a sample made from the uploaded template. It is not an issued certificate.' }}">
+              Preview certificate
+            </a>
+          @endif
         </div>
 
         @if ($isRejected && $endorsement->rejection_reason)

@@ -272,6 +272,109 @@ class EndorsementParticipantsViewTest extends TestCase
             ->assertSee(route('admin.certs.endorsements.show', ['id' => $rejected->id]), false);
     }
 
+    public function test_activity_title_links_to_the_package_page(): void
+    {
+        $organizer = $this->user(User::ROLE_ORGANIZER);
+        $endorsement = $this->endorsement($organizer, CertificateEndorsement::STATUS_ENDORSED);
+        $url = route('admin.certs.endorsements.show', ['id' => $endorsement->id]);
+
+        $this->actingAs($organizer)
+            ->get(route('admin.certs.index', ['group' => 'endorsements']))
+            ->assertOk()
+            ->assertSee('<a class="cert-title-link" href="'.$url.'"', false);
+    }
+
+    public function test_preview_button_opens_an_issued_certificate_when_there_is_one(): void
+    {
+        $organizer = $this->user(User::ROLE_ORGANIZER);
+        $endorsement = $this->endorsement($organizer, CertificateEndorsement::STATUS_RD_APPROVED);
+        $certificate = $this->issuedCertificate($endorsement, 'Pedro Penduko');
+
+        $this->actingAs($organizer)
+            ->get(route('admin.certs.endorsements.show', ['id' => $endorsement->id]))
+            ->assertOk()
+            ->assertSee('Preview certificate')
+            ->assertSee(route('admin.certs.endorsements.certificate', [
+                'id' => $endorsement->id,
+                'certificateId' => $certificate->id,
+            ]), false)
+            ->assertDontSee(route('admin.certs.endorsements.sample', ['id' => $endorsement->id]), false);
+    }
+
+    public function test_preview_button_opens_a_sample_before_certificates_are_issued(): void
+    {
+        $organizer = $this->user(User::ROLE_ORGANIZER);
+        $endorsement = $this->endorsement($organizer, CertificateEndorsement::STATUS_ENDORSED);
+
+        $this->actingAs($organizer)
+            ->get(route('admin.certs.endorsements.show', ['id' => $endorsement->id]))
+            ->assertOk()
+            ->assertSee('Preview certificate')
+            ->assertSee(route('admin.certs.endorsements.sample', ['id' => $endorsement->id]), false);
+    }
+
+    public function test_endorser_sample_is_marked_as_a_preview(): void
+    {
+        $this->storeTemplate();
+        $organizer = $this->user(User::ROLE_ORGANIZER);
+        $endorsement = $this->endorsement($organizer, CertificateEndorsement::STATUS_ENDORSED);
+
+        $response = $this->actingAs($organizer)
+            ->get(route('admin.certs.endorsements.sample', ['id' => $endorsement->id]))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf');
+
+        $text = $this->pdfText($response->getContent());
+        $this->assertStringContainsString('PREVIEW ONLY - NOT AN ISSUED CERTIFICATE', $text);
+        $this->assertStringContainsString('Juan Dela Cruz', $text);
+    }
+
+    public function test_regional_director_preview_has_no_endorser_banner(): void
+    {
+        $this->storeTemplate();
+        $endorsement = $this->endorsement($this->user(User::ROLE_ORGANIZER), CertificateEndorsement::STATUS_ENDORSED);
+
+        $response = $this->actingAs($this->user(User::ROLE_REGIONAL_DIRECTOR))
+            ->get(route('admin.certs.endorsements.preview', ['id' => $endorsement->id]))
+            ->assertOk();
+
+        $this->assertStringNotContainsString('PREVIEW ONLY', $this->pdfText($response->getContent()));
+    }
+
+    public function test_endorsers_cannot_preview_another_endorsers_package(): void
+    {
+        $this->storeTemplate();
+        $endorsement = $this->endorsement($this->user(User::ROLE_ORGANIZER), CertificateEndorsement::STATUS_ENDORSED);
+
+        $this->actingAs($this->user(User::ROLE_ORGANIZER))
+            ->get(route('admin.certs.endorsements.sample', ['id' => $endorsement->id]))
+            ->assertForbidden();
+    }
+
+    private function storeTemplate(): void
+    {
+        $template = new \FPDF('L');
+        $template->AddPage();
+        $template->SetFont('Helvetica', '', 18);
+        $template->Text(20, 30, 'Certificate of Participation');
+        Storage::disk('local')->put('endorsements/templates/test.pdf', $template->Output('S'));
+    }
+
+    private function pdfText(string $pdf): string
+    {
+        exec('command -v pdftotext', $found, $status);
+        if ($status !== 0) {
+            $this->markTestSkipped('pdftotext is not installed.');
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'cert-preview-');
+        file_put_contents($path, $pdf);
+        $text = (string) shell_exec('pdftotext '.escapeshellarg($path).' -');
+        @unlink($path);
+
+        return $text;
+    }
+
     public function test_old_delivery_links_redirect_to_the_package_page(): void
     {
         $organizer = $this->user(User::ROLE_ORGANIZER);

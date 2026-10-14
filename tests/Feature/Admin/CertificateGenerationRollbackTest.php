@@ -32,7 +32,7 @@ class CertificateGenerationRollbackTest extends TestCase
         FailingCertificateGenerationService::reset();
         $this->app->singleton(
             CertificateGenerationService::class,
-            fn () => new FailingCertificateGenerationService()
+            fn () => new FailingCertificateGenerationService
         );
     }
 

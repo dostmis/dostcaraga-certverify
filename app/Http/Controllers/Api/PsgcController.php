@@ -12,12 +12,14 @@ use Illuminate\Support\Facades\Log;
 class PsgcController extends Controller
 {
     private const CACHE_TTL = 604800; // 7 days
+
     private const TIMEOUT = 15;
+
     private const BASE_URL = 'https://psgc.rootscratch.com';
 
     private function fetchFromApi(string $path): array
     {
-        $url = self::BASE_URL . $path;
+        $url = self::BASE_URL.$path;
 
         try {
             $response = Http::timeout(self::TIMEOUT)
@@ -29,12 +31,14 @@ class PsgcController extends Controller
                     'url' => $url,
                     'status' => $response->status(),
                 ]);
+
                 return [];
             }
 
             $data = $response->json();
-            if (!is_array($data)) {
+            if (! is_array($data)) {
                 Log::warning('PSGC Rootscratch API returned non-array.', ['url' => $url]);
+
                 return [];
             }
 
@@ -44,6 +48,7 @@ class PsgcController extends Controller
                 'url' => $url,
                 'error' => $e->getMessage(),
             ]);
+
             return [];
         }
     }
@@ -55,27 +60,27 @@ class PsgcController extends Controller
     private function loadStaticPsgc(): array
     {
         $path = resource_path('data/psgc.json');
-        if (!file_exists($path)) {
+        if (! file_exists($path)) {
             return [];
         }
 
         $raw = json_decode(file_get_contents($path), true);
-        if (!is_array($raw)) {
+        if (! is_array($raw)) {
             return [];
         }
 
         $result = [];
         foreach ($raw as $regionName => $regionData) {
-            if (!is_array($regionData)) {
+            if (! is_array($regionData)) {
                 continue;
             }
             foreach ($regionData as $provName => $provData) {
-                if ($provName === 'population' || !is_array($provData)) {
+                if ($provName === 'population' || ! is_array($provData)) {
                     continue;
                 }
                 $cities = [];
                 foreach ($provData as $cityName => $cityData) {
-                    if ($cityName === 'population' || $cityName === 'class' || $cityName === 'cityClass' || !is_array($cityData)) {
+                    if ($cityName === 'population' || $cityName === 'class' || $cityName === 'cityClass' || ! is_array($cityData)) {
                         continue;
                     }
                     $barangays = [];
@@ -113,12 +118,12 @@ class PsgcController extends Controller
     private function getProvincesFromStaticByRegion(string $regionName): array
     {
         $path = resource_path('data/psgc.json');
-        if (!file_exists($path)) {
+        if (! file_exists($path)) {
             return [];
         }
 
         $raw = json_decode(file_get_contents($path), true);
-        if (!is_array($raw)) {
+        if (! is_array($raw)) {
             return [];
         }
 
@@ -131,13 +136,13 @@ class PsgcController extends Controller
             }
         }
 
-        if ($regionKey === null || !isset($raw[$regionKey]) || !is_array($raw[$regionKey])) {
+        if ($regionKey === null || ! isset($raw[$regionKey]) || ! is_array($raw[$regionKey])) {
             return [];
         }
 
         $result = [];
         foreach ($raw[$regionKey] as $provName => $provData) {
-            if ($provName === 'population' || !is_array($provData)) {
+            if ($provName === 'population' || ! is_array($provData)) {
                 continue;
             }
             $result[] = [
@@ -147,6 +152,7 @@ class PsgcController extends Controller
         }
 
         usort($result, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+
         return $result;
     }
 
@@ -156,7 +162,7 @@ class PsgcController extends Controller
             $raw = $this->fetchFromApi('/region');
             $result = [];
             foreach ($raw as $item) {
-                if (!empty($item['name'])) {
+                if (! empty($item['name'])) {
                     $result[] = [
                         'name' => $item['name'],
                         'psgc_code' => $item['psgc_id'] ?? '',
@@ -164,6 +170,7 @@ class PsgcController extends Controller
                 }
             }
             usort($result, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+
             return $result;
         });
 
@@ -179,7 +186,7 @@ class PsgcController extends Controller
 
         $regPrefix = substr($regCode, 0, 2);
 
-        $cacheKey = 'psgc_provinces_' . $regPrefix;
+        $cacheKey = 'psgc_provinces_'.$regPrefix;
 
         $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($regPrefix, $regCode) {
             $raw = $this->fetchFromApi('/province');
@@ -204,12 +211,12 @@ class PsgcController extends Controller
                 // Look up the region name from the regions list
                 $regionName = null;
                 $regions = Cache::get('psgc_regions');
-                if (!$regions) {
+                if (! $regions) {
                     // Regions cache not yet populated; fetch fresh
                     $regionsRaw = $this->fetchFromApi('/region');
                     $regions = [];
                     foreach ($regionsRaw as $item) {
-                        if (!empty($item['name'])) {
+                        if (! empty($item['name'])) {
                             $regions[] = [
                                 'name' => $item['name'],
                                 'psgc_code' => $item['psgc_id'] ?? '',
@@ -229,6 +236,7 @@ class PsgcController extends Controller
             }
 
             usort($result, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+
             return $result;
         });
 
@@ -246,13 +254,13 @@ class PsgcController extends Controller
             return response()->json(['error' => 'province_name is required'], 422);
         }
 
-        $cacheKey = 'psgc_municipalities_' . md5(strtolower($provinceName));
+        $cacheKey = 'psgc_municipalities_'.md5(strtolower($provinceName));
 
         $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($provinceName) {
             $static = $this->loadStaticPsgc();
             $key = strtolower($provinceName);
 
-            if (!isset($static[$key])) {
+            if (! isset($static[$key])) {
                 // Try fuzzy matching (e.g. "Agusan del Norte" vs "Agusan Del Norte")
                 foreach ($static as $provKey => $provData) {
                     if (strcasecmp($provKey, $provinceName) === 0 ||
@@ -263,7 +271,7 @@ class PsgcController extends Controller
                 }
             }
 
-            if (!isset($static[$key])) {
+            if (! isset($static[$key])) {
                 return [];
             }
 
@@ -276,6 +284,7 @@ class PsgcController extends Controller
             }
 
             usort($result, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+
             return $result;
         });
 
@@ -295,14 +304,14 @@ class PsgcController extends Controller
             return response()->json(['error' => 'city_name and province_name are required'], 422);
         }
 
-        $cacheKey = 'psgc_barangays_' . md5(strtolower($provinceName) . '|' . strtolower($cityName));
+        $cacheKey = 'psgc_barangays_'.md5(strtolower($provinceName).'|'.strtolower($cityName));
 
         $data = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($cityName, $provinceName) {
             $static = $this->loadStaticPsgc();
             $provKey = strtolower($provinceName);
 
             // Find province
-            if (!isset($static[$provKey])) {
+            if (! isset($static[$provKey])) {
                 foreach ($static as $pk => $pd) {
                     if (strcasecmp($pd['name'], $provinceName) === 0) {
                         $provKey = $pk;
@@ -311,13 +320,13 @@ class PsgcController extends Controller
                 }
             }
 
-            if (!isset($static[$provKey])) {
+            if (! isset($static[$provKey])) {
                 return [];
             }
 
             // Find city
             $cityKey = strtolower($cityName);
-            if (!isset($static[$provKey]['cities'][$cityKey])) {
+            if (! isset($static[$provKey]['cities'][$cityKey])) {
                 foreach ($static[$provKey]['cities'] as $ck => $cd) {
                     if (strcasecmp($cd['name'], $cityName) === 0) {
                         $cityKey = $ck;
@@ -326,7 +335,7 @@ class PsgcController extends Controller
                 }
             }
 
-            if (!isset($static[$provKey]['cities'][$cityKey])) {
+            if (! isset($static[$provKey]['cities'][$cityKey])) {
                 return [];
             }
 
@@ -339,6 +348,7 @@ class PsgcController extends Controller
             }
 
             usort($result, fn ($a, $b) => strcasecmp($a['name'], $b['name']));
+
             return $result;
         });
 

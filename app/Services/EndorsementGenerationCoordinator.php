@@ -38,8 +38,7 @@ class EndorsementGenerationCoordinator
     public function __construct(
         private readonly CertificateGenerationService $generator,
         private readonly EndorsementTelegramNotifier $telegram,
-    ) {
-    }
+    ) {}
 
     /**
      * Claim an endorsement for generation, or fail if it is not claimable.
@@ -79,7 +78,7 @@ class EndorsementGenerationCoordinator
      *
      * @param  array<int, array<string, mixed>>  $participants
      *
-     * @throws Throwable  On any dispatch-time failure, after releasing the claim.
+     * @throws Throwable On any dispatch-time failure, after releasing the claim.
      */
     public function dispatchGeneration(
         CertificateEndorsement $endorsement,
@@ -101,7 +100,7 @@ class EndorsementGenerationCoordinator
         if ($temporaryTemplatePath !== null) {
             // Move the converted file to a path the batch callbacks can find,
             // since normalizeTemplateForFpdi() names it with a random UUID.
-            $batchTemplatePath = self::TEMPLATE_DIR . '/endorsement_' . $endorsementId . '.pdf';
+            $batchTemplatePath = self::TEMPLATE_DIR.'/endorsement_'.$endorsementId.'.pdf';
             // A stale file from an abandoned run would make move() throw.
             Storage::disk('local')->delete($batchTemplatePath);
             Storage::disk('local')->move($temporaryTemplatePath, $batchTemplatePath);
@@ -129,7 +128,7 @@ class EndorsementGenerationCoordinator
 
         try {
             $batch = Bus::batch($jobs)
-                ->name('certificates:endorsement:' . $endorsementId)
+                ->name('certificates:endorsement:'.$endorsementId)
                 ->then(function (Batch $batch) use ($endorsementId, $approverId) {
                     app(EndorsementGenerationCoordinator::class)->finalizeSuccess($endorsementId, $approverId);
                 })

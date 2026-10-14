@@ -28,6 +28,7 @@ class MigrateCertificateFilesToPrivate extends Command
 
         if ($certs->isEmpty()) {
             $this->info('No certificate file paths found.');
+
             return self::SUCCESS;
         }
 
@@ -47,38 +48,43 @@ class MigrateCertificateFilesToPrivate extends Command
                 }
 
                 if ($localDisk->exists($path)) {
-                    if ($publicDisk->exists($path) && !$dryRun) {
+                    if ($publicDisk->exists($path) && ! $dryRun) {
                         $publicDisk->delete($path);
                     }
                     $skipped++;
+
                     continue;
                 }
 
-                if (!$publicDisk->exists($path)) {
+                if (! $publicDisk->exists($path)) {
                     $this->warn("MISSING {$cert->certificate_code} {$field}: {$path}");
                     $missing++;
+
                     continue;
                 }
 
                 if ($dryRun) {
                     $this->line("DRY {$cert->certificate_code} {$field}: {$path}");
                     $moved++;
+
                     continue;
                 }
 
                 $stream = $publicDisk->readStream($path);
-                if (!is_resource($stream)) {
+                if (! is_resource($stream)) {
                     $this->error("FAIL {$cert->certificate_code} {$field}: cannot read {$path}");
                     $failed++;
+
                     continue;
                 }
 
                 $ok = $localDisk->writeStream($path, $stream);
                 fclose($stream);
 
-                if (!$ok) {
+                if (! $ok) {
                     $this->error("FAIL {$cert->certificate_code} {$field}: cannot write {$path}");
                     $failed++;
+
                     continue;
                 }
 
@@ -89,12 +95,11 @@ class MigrateCertificateFilesToPrivate extends Command
 
         $this->newLine();
         $this->info('Migration summary');
-        $this->line('Moved: ' . $moved);
-        $this->line('Already private/skipped: ' . $skipped);
-        $this->line('Missing on public: ' . $missing);
-        $this->line('Failed: ' . $failed);
+        $this->line('Moved: '.$moved);
+        $this->line('Already private/skipped: '.$skipped);
+        $this->line('Missing on public: '.$missing);
+        $this->line('Failed: '.$failed);
 
         return $failed > 0 ? self::FAILURE : self::SUCCESS;
     }
 }
-

@@ -6,8 +6,8 @@ use App\Models\Certificate;
 use App\Support\PdfImageNormalizer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use setasign\Fpdi\Fpdi;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Throwable;
 
 class RefreshCertificateQrDomain extends Command
@@ -30,7 +30,7 @@ class RefreshCertificateQrDomain extends Command
             static fn ($value) => $value !== ''
         ));
 
-        if (!empty($codes)) {
+        if (! empty($codes)) {
             $query->whereIn('certificate_code', $codes);
         }
 
@@ -42,6 +42,7 @@ class RefreshCertificateQrDomain extends Command
         $certs = $query->orderBy('id')->get();
         if ($certs->isEmpty()) {
             $this->info('No certificates matched the given filters.');
+
             return self::SUCCESS;
         }
 
@@ -55,23 +56,26 @@ class RefreshCertificateQrDomain extends Command
         foreach ($certs as $cert) {
             $path = (string) $cert->stamped_pdf_path;
             $storage = $this->resolveCertificateStorage($path);
-            if (!$storage) {
+            if (! $storage) {
                 $this->warn("SKIP {$cert->certificate_code}: stamped PDF missing ({$path}).");
                 $skipped++;
+
                 continue;
             }
 
             if (empty($cert->public_token)) {
                 $this->warn("SKIP {$cert->certificate_code}: missing public token.");
                 $skipped++;
+
                 continue;
             }
 
-            $verifyUrl = $baseUrl . route('cert.verify', ['t' => $cert->public_token], false);
+            $verifyUrl = $baseUrl.route('cert.verify', ['t' => $cert->public_token], false);
 
             if ($dryRun) {
                 $this->line("DRY {$cert->certificate_code}: {$verifyUrl}");
                 $updated++;
+
                 continue;
             }
 
@@ -128,7 +132,7 @@ class RefreshCertificateQrDomain extends Command
     {
         $qrPng = QrCode::format('png')->size(220)->margin(1)->generate($verifyUrl);
 
-        $tmpQr = storage_path('app/tmp_qr_' . uniqid('', true) . '.png');
+        $tmpQr = storage_path('app/tmp_qr_'.uniqid('', true).'.png');
         @mkdir(dirname($tmpQr), 0777, true);
         file_put_contents($tmpQr, $qrPng);
         $temporaryFiles = [$tmpQr];
@@ -137,14 +141,14 @@ class RefreshCertificateQrDomain extends Command
             $temporaryFiles[] = $qrForPdf;
         }
 
-        $pdf = new Fpdi();
+        $pdf = new Fpdi;
         $converted = null;
 
         try {
             $pageCount = $pdf->setSourceFile($sourceAbs);
         } catch (Throwable $e) {
             $converted = $this->convertPdfWithGhostscript($sourceAbs);
-            $pdf = new Fpdi();
+            $pdf = new Fpdi;
             $pageCount = $pdf->setSourceFile($converted);
         }
 
@@ -198,14 +202,14 @@ class RefreshCertificateQrDomain extends Command
     {
         $tmpDir = storage_path('app/tmp');
         @mkdir($tmpDir, 0777, true);
-        $outPath = $tmpDir . '/fpdi_' . uniqid('', true) . '.pdf';
+        $outPath = $tmpDir.'/fpdi_'.uniqid('', true).'.pdf';
 
         $cmd = 'gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/prepress -dNOPAUSE -dBATCH -dSAFER -o '
-            . escapeshellarg($outPath) . ' ' . escapeshellarg($sourceAbs);
+            .escapeshellarg($outPath).' '.escapeshellarg($sourceAbs);
 
         @exec($cmd, $output, $code);
 
-        if ($code !== 0 || !is_file($outPath)) {
+        if ($code !== 0 || ! is_file($outPath)) {
             $message = $code === 127
                 ? 'Ghostscript (gs) is not installed on the server. Please install it to process PDFs, or upload a PDF saved as version 1.4.'
                 : 'This PDF cannot be processed. Please re-save it as PDF 1.4 or contact the administrator.';

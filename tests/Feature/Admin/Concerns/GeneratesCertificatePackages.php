@@ -49,10 +49,10 @@ trait GeneratesCertificatePackages
      */
     protected function makeEndorsement(array $participantNames, array $payloadOverrides = []): CertificateEndorsement
     {
-        $participantsPath = 'endorsements/participants/' . uniqid('p', true) . '.csv';
+        $participantsPath = 'endorsements/participants/'.uniqid('p', true).'.csv';
         Storage::disk('local')->put(
             $participantsPath,
-            "name\n" . implode("\n", $participantNames) . "\n"
+            "name\n".implode("\n", $participantNames)."\n"
         );
 
         return CertificateEndorsement::create([
@@ -88,7 +88,7 @@ trait GeneratesCertificatePackages
         $certificate = Certificate::create([
             'certificate_code' => $code,
             'public_token' => (string) \Illuminate\Support\Str::uuid(),
-            'participant_name' => 'Historic Participant ' . $code,
+            'participant_name' => 'Historic Participant '.$code,
             'training_title' => 'Community Innovation Workshop',
             'training_date' => '2026-03-01',
             'issuing_office' => 'DOST Caraga - Fields Operation Division',

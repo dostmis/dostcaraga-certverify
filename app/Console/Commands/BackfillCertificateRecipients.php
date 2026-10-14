@@ -10,6 +10,7 @@ use Illuminate\Console\Command;
 class BackfillCertificateRecipients extends Command
 {
     protected $signature = 'certificates:backfill-recipients';
+
     protected $description = 'Link existing certificates to recipients by email and name matching';
 
     public function handle(): int
@@ -49,7 +50,7 @@ class BackfillCertificateRecipients extends Command
             }
         }
 
-        $this->info("Backfill complete.");
+        $this->info('Backfill complete.');
         $this->info("  Linked to existing recipients: {$linked}");
         $this->info("  Created new dormant recipients: {$created}");
         $this->info("  Skipped (no email): {$skipped}");

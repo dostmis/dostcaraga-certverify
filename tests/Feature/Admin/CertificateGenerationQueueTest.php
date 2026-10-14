@@ -39,8 +39,8 @@ class CertificateGenerationQueueTest extends TestCase
         $today = now('Asia/Manila')->toDateString();
 
         // Two certificates already issued today, in this package's prefix.
-        $this->seedHistoricCertificate('2026-FOD-CIW-01-001', $today . ' 08:00:00');
-        $this->seedHistoricCertificate('2026-FOD-CIW-01-002', $today . ' 08:05:00');
+        $this->seedHistoricCertificate('2026-FOD-CIW-01-001', $today.' 08:00:00');
+        $this->seedHistoricCertificate('2026-FOD-CIW-01-002', $today.' 08:05:00');
 
         // And one from a previous day, which must be untouched and must not
         // affect today's batch segment.
@@ -202,7 +202,7 @@ class CertificateGenerationQueueTest extends TestCase
         // The key must not vary by job class either, or a future
         // certificate-creating job would race this one.
         $this->assertSame(
-            'laravel-queue-overlap:' . GenerateCertificateJob::CODE_LOCK,
+            'laravel-queue-overlap:'.GenerateCertificateJob::CODE_LOCK,
             $middleware[0]->getLockKey($job)
         );
     }
@@ -217,7 +217,7 @@ class CertificateGenerationQueueTest extends TestCase
         $coordinator->dispatchGeneration($endorsement, $this->participants($names), null);
 
         // Stand in for a second worker mid-certificate.
-        $lock = Cache::lock('laravel-queue-overlap:' . GenerateCertificateJob::CODE_LOCK, 120);
+        $lock = Cache::lock('laravel-queue-overlap:'.GenerateCertificateJob::CODE_LOCK, 120);
         $this->assertTrue($lock->get());
 
         try {

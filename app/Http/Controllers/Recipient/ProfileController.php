@@ -26,7 +26,7 @@ class ProfileController extends Controller
             'first_name' => ['required', 'string', 'max:255'],
             'middle_initial' => ['nullable', 'string', 'max:10'],
             'last_name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:recipients,email,' . $recipient->id],
+            'email' => ['required', 'email', 'max:255', 'unique:recipients,email,'.$recipient->id],
             'contact_number' => ['nullable', 'string', 'max:30'],
             'block_lot_purok' => ['nullable', 'string', 'max:255'],
             'region' => ['nullable', 'string', 'max:255'],
@@ -51,8 +51,8 @@ class ProfileController extends Controller
 
         $validated['name'] = trim(
             $validated['first_name']
-            . ($validated['middle_initial'] ? ' ' . $validated['middle_initial'] . '.' : '')
-            . ' ' . $validated['last_name']
+            .($validated['middle_initial'] ? ' '.$validated['middle_initial'].'.' : '')
+            .' '.$validated['last_name']
         );
 
         $recipient->fill($validated);
@@ -76,7 +76,7 @@ class ProfileController extends Controller
 
         $recipient = $request->user();
 
-        if (!Hash::check($validated['current_password'], $recipient->password)) {
+        if (! Hash::check($validated['current_password'], $recipient->password)) {
             return back()->withErrors([
                 'current_password' => 'The current password is incorrect.',
             ]);

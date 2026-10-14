@@ -22,6 +22,7 @@ use Illuminate\Support\Str;
 class CertificateEndorsementSeeder extends Seeder
 {
     private const PARTICIPANTS_DIR = 'certificate-endorsements/participants';
+
     private const TEMPLATES_DIR = 'certificate-endorsements/templates';
 
     public function run(): void
@@ -72,7 +73,7 @@ class CertificateEndorsementSeeder extends Seeder
                 ['username' => $username],
                 [
                     'name' => $name,
-                    'email' => $username . '@seed.invalid',
+                    'email' => $username.'@seed.invalid',
                     'password' => bcrypt(Str::random(32)),
                     'role' => $role,
                     'approval_status' => 'approved',
@@ -262,7 +263,7 @@ class CertificateEndorsementSeeder extends Seeder
                 'region' => 'Region XIII (Caraga)',
                 'province' => ['Agusan del Norte', 'Agusan del Sur', 'Surigao del Norte', 'Surigao del Sur', 'Dinagat Islands'][$seed % 5],
                 'city_municipality' => ['Butuan City', 'Cabadbaran City', 'Surigao City', 'Bislig City', 'San Jose'][$seed % 5],
-                'barangay' => 'Barangay ' . (1 + ($seed % 30)),
+                'barangay' => 'Barangay '.(1 + ($seed % 30)),
                 'industry' => ['Food Processing', 'Metalworking', 'Handicraft', 'Agriculture', 'Services'][$seed % 5],
             ];
         }
@@ -286,7 +287,7 @@ class CertificateEndorsementSeeder extends Seeder
         $csv = stream_get_contents($handle);
         fclose($handle);
 
-        $path = self::PARTICIPANTS_DIR . '/participants_' . Str::uuid() . '.csv';
+        $path = self::PARTICIPANTS_DIR.'/participants_'.Str::uuid().'.csv';
         Storage::disk('local')->put($path, $csv);
 
         return $path;
@@ -308,12 +309,12 @@ class CertificateEndorsementSeeder extends Seeder
             throw new \RuntimeException("No seed template configured for {$certificateType}.");
         }
 
-        $sourceAbs = public_path('templates/' . $fileName);
+        $sourceAbs = public_path('templates/'.$fileName);
         if (! is_file($sourceAbs)) {
             throw new \RuntimeException("Default template file not found: {$fileName}.");
         }
 
-        $path = self::TEMPLATES_DIR . '/template_' . Str::uuid() . '.pdf';
+        $path = self::TEMPLATES_DIR.'/template_'.Str::uuid().'.pdf';
         Storage::disk('local')->put($path, file_get_contents($sourceAbs));
 
         return $path;

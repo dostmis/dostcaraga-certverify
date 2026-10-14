@@ -14,7 +14,7 @@ class AdminOnly
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
-        if (!$user || !$user->isRegionalDirector()) {
+        if (! $user || ! $user->isRegionalDirector()) {
             abort(403, 'Admin access only.');
         }
 

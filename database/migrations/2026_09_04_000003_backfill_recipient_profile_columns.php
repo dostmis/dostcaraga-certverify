@@ -51,9 +51,7 @@ return new class extends Migration
      * methods drop them. Dropping them here as well would fail on a rollback
      * of an already-migrated environment.
      */
-    public function down(): void
-    {
-    }
+    public function down(): void {}
 
     /**
      * @return array<int, string>

@@ -9,7 +9,7 @@ class PdfImageNormalizer
     public static function prepareForFpdf(string $sourceAbs): string
     {
         $imageInfo = @getimagesize($sourceAbs);
-        if (!$imageInfo) {
+        if (! $imageInfo) {
             return $sourceAbs;
         }
 
@@ -19,15 +19,16 @@ class PdfImageNormalizer
         }
 
         $sourceImage = @imagecreatefrompng($sourceAbs);
-        if (!$sourceImage) {
+        if (! $sourceImage) {
             return $sourceAbs;
         }
 
         $width = imagesx($sourceImage);
         $height = imagesy($sourceImage);
         $flattenedImage = imagecreatetruecolor($width, $height);
-        if (!$flattenedImage) {
+        if (! $flattenedImage) {
             imagedestroy($sourceImage);
+
             return $sourceAbs;
         }
 
@@ -38,14 +39,14 @@ class PdfImageNormalizer
 
         $tmpDir = storage_path('app/tmp');
         @mkdir($tmpDir, 0777, true);
-        $normalizedAbs = $tmpDir . '/fpdf-image-' . Str::uuid() . '.png';
+        $normalizedAbs = $tmpDir.'/fpdf-image-'.Str::uuid().'.png';
 
         $saved = @imagepng($flattenedImage, $normalizedAbs);
 
         imagedestroy($flattenedImage);
         imagedestroy($sourceImage);
 
-        if (!$saved || !is_file($normalizedAbs)) {
+        if (! $saved || ! is_file($normalizedAbs)) {
             return $sourceAbs;
         }
 

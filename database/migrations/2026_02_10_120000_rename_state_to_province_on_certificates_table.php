@@ -5,10 +5,11 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
-        if (Schema::hasColumn('certificates', 'state') && !Schema::hasColumn('certificates', 'province')) {
+        if (Schema::hasColumn('certificates', 'state') && ! Schema::hasColumn('certificates', 'province')) {
             Schema::table('certificates', function (Blueprint $table) {
                 $table->renameColumn('state', 'province');
             });
@@ -23,7 +24,7 @@ return new class extends Migration {
 
     public function down(): void
     {
-        if (Schema::hasColumn('certificates', 'province') && !Schema::hasColumn('certificates', 'state')) {
+        if (Schema::hasColumn('certificates', 'province') && ! Schema::hasColumn('certificates', 'state')) {
             Schema::table('certificates', function (Blueprint $table) {
                 $table->renameColumn('province', 'state');
             });

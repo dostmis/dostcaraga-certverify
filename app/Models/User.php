@@ -13,7 +13,9 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     public const ROLE_REGIONAL_DIRECTOR = 'regional_director';
+
     public const ROLE_UNIT_SUPERVISOR = 'unit_supervisor';
+
     public const ROLE_ORGANIZER = 'organizer';
 
     /**

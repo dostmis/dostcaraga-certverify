@@ -1630,7 +1630,6 @@ This will serve as our reference for post-training documentation and processing.
         verifyBtn.addEventListener('click', function() {
           if (!selectedParticipant) return;
           var entered = normalizeMobile(verifyInput.value.trim());
-          var expected = normalizeMobile(selectedParticipant.contact_number);
 
           if (!entered) {
             if (verifyError) {
@@ -1640,34 +1639,61 @@ This will serve as our reference for post-training documentation and processing.
             return;
           }
 
-          if (entered === expected) {
-            var participant = selectedParticipant;
-            hideVerifyPanel();
-            searchInput.value = participant.participant_name;
-            searchInput.disabled = true;
-            // Ensure privacy consent is checked for auto-submit
-            if (privacyConsentCheckbox && !privacyConsentCheckbox.checked) {
-              privacyConsentCheckbox.checked = true;
-              toggleIntakeFields();
-            }
-            autofillForm(participant).then(function() {
-              // Auto-submit after populating fields
-              if (form) {
-                var submitBtn = form.querySelector('.submit-btn');
-                if (submitBtn) {
-                  submitBtn.textContent = 'Registering...';
-                  submitBtn.disabled = true;
-                }
-                form.submit();
-              }
-            });
-          } else {
+          function showVerifyMismatch() {
             if (verifyError) {
               verifyError.innerHTML = '<ul style="list-style-type: disc; padding-left: 1.5rem; text-align: left; margin: 0;"><li>The mobile number does not match our records. Please try again.</li><li>If you forgot your registered number or entered an invalid one, please contact the MIS Team at mis@caraga.dost.gov.ph.</li></ul>';
               verifyError.style.display = '';
             }
             if (verifyInput) verifyInput.value = '';
           }
+
+          // Verify ownership server-side. The participant's personal data is
+          // only released by the server once the mobile number matches, so no
+          // PII is exposed to the browser before verification succeeds.
+          var csrfField = form ? form.querySelector('input[name="_token"]') : null;
+          verifyBtn.disabled = true;
+          fetch('{{ route('participants.verify') }}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+              'X-CSRF-TOKEN': csrfField ? csrfField.value : ''
+            },
+            body: JSON.stringify({ id: selectedParticipant.id, mobile: verifyInput.value.trim() })
+          })
+            .then(function(res) { return res.json().catch(function() { return {}; }).then(function(body) { return { ok: res.ok, body: body }; }); })
+            .then(function(result) {
+              verifyBtn.disabled = false;
+              if (result.ok && result.body && result.body.verified && result.body.participant) {
+                var participant = result.body.participant;
+                hideVerifyPanel();
+                searchInput.value = participant.participant_name;
+                searchInput.disabled = true;
+                // Ensure privacy consent is checked for auto-submit
+                if (privacyConsentCheckbox && !privacyConsentCheckbox.checked) {
+                  privacyConsentCheckbox.checked = true;
+                  toggleIntakeFields();
+                }
+                autofillForm(participant).then(function() {
+                  // Auto-submit after populating fields
+                  if (form) {
+                    var submitBtn = form.querySelector('.submit-btn');
+                    if (submitBtn) {
+                      submitBtn.textContent = 'Registering...';
+                      submitBtn.disabled = true;
+                    }
+                    form.submit();
+                  }
+                });
+              } else {
+                showVerifyMismatch();
+              }
+            })
+            .catch(function() {
+              verifyBtn.disabled = false;
+              showVerifyMismatch();
+            });
         });
 
         verifyInput.addEventListener('keydown', function(e) {

@@ -288,11 +288,7 @@
                 document.getElementById('verify_recipient_id').value = data.recipient_id;
 
                 let infoHtml = 'Account found: <strong>' + data.name + '</strong>';
-                if (data.masked_contact) {
-                    infoHtml += '<br>Verify with your mobile number ending in <strong>***' + data.masked_contact + '</strong>';
-                } else {
-                    infoHtml += '<br>Enter your registered mobile number to verify.';
-                }
+                infoHtml += '<br>Enter your registered mobile number to verify.';
                 document.getElementById('verifyInfo').innerHTML = infoHtml;
 
                 // Update page title

@@ -8,9 +8,13 @@ use Illuminate\Support\Str;
 class Certificate extends Model
 {
     public const EMAIL_STATUS_QUEUED = 'queued';
+
     public const EMAIL_STATUS_SENT = 'sent';
+
     public const EMAIL_STATUS_FAILED = 'failed';
+
     public const EMAIL_STATUS_SKIPPED_NO_EMAIL = 'skipped_no_email';
+
     public const EMAIL_STATUS_SKIPPED_INVALID_EMAIL = 'skipped_invalid_email';
 
     protected $fillable = [

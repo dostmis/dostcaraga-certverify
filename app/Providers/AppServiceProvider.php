@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use App\Models\Recipient;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -22,6 +25,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Per-purpose rate limiters, each with its own IP-keyed bucket so the
+        // public returning-participant lookup, its server-side mobile
+        // verification, and the recipient claim flow throttle independently
+        // (an inline `throttle:N,1` would share one domain+IP bucket for guests
+        // and let these endpoints interfere with each other).
+        RateLimiter::for('participant-search', fn (Request $request) => Limit::perMinute(20)->by($request->ip()));
+        RateLimiter::for('participant-verify', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
+        RateLimiter::for('recipient-claim', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
+
         if (app()->runningInConsole()) {
             return;
         }

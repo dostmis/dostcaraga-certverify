@@ -6,6 +6,7 @@ use App\Models\Certificate;
 use App\Support\RegionalDirectorSignatory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class CertificatePublicController extends Controller
 {
@@ -18,39 +19,49 @@ class CertificatePublicController extends Controller
         $code = null;
         $reason = null;
 
-        if (!$t) {
+        if (! $t) {
             $reason = 'Missing token.';
-            return view('verify.show', compact('cert','found','code','reason'));
+
+            return view('verify.show', compact('cert', 'found', 'code', 'reason'));
+        }
+
+        // public_token is a uuid column; a malformed value would throw a
+        // database error, so treat anything that is not a uuid as "not found".
+        if (! Str::isUuid($t)) {
+            $reason = 'Token not found.';
+
+            return view('verify.show', compact('cert', 'found', 'code', 'reason'));
         }
 
         $cert = Certificate::where('public_token', $t)->first();
 
-        if (!$cert) {
+        if (! $cert) {
             $reason = 'Token not found.';
-            return view('verify.show', compact('cert','found','code','reason'));
+
+            return view('verify.show', compact('cert', 'found', 'code', 'reason'));
         }
 
         $found = true;
         $code = $cert->certificate_code;
 
-        return view('verify.show', compact('cert','found','code','reason'));
+        return view('verify.show', compact('cert', 'found', 'code', 'reason'));
     }
 
     public function print(Request $request)
     {
         $t = $request->query('t');
-        if (!$t) {
+        if (! $t || ! Str::isUuid($t)) {
             abort(404, 'Missing token.');
         }
 
         $cert = Certificate::where('public_token', $t)->firstOrFail();
 
-        if (!$cert->isValid()) {
+        if (! $cert->isValid()) {
             abort(403, 'Certificate is not valid for print.');
         }
 
         $baseUrl = rtrim((string) config('app.url'), '/');
-        $verifyUrl = $baseUrl . route('cert.verify', ['t' => $cert->public_token], false);
+        $verifyUrl = $baseUrl.route('cert.verify', ['t' => $cert->public_token], false);
         $regionalDirectorSignatory = RegionalDirectorSignatory::viewData();
 
         return view('certificate.print', compact('cert', 'verifyUrl', 'regionalDirectorSignatory'));
@@ -60,13 +71,13 @@ class CertificatePublicController extends Controller
     {
         $t = $request->query('t');
 
-        if (!$t) {
+        if (! $t || ! Str::isUuid($t)) {
             abort(404, 'Missing token.');
         }
 
         $cert = Certificate::where('public_token', $t)->firstOrFail();
 
-        if (!$cert->isValid()) {
+        if (! $cert->isValid()) {
             abort(403, 'Certificate is not valid for preview.');
         }
 
@@ -75,13 +86,13 @@ class CertificatePublicController extends Controller
         }
 
         $storage = $this->resolveCertificateStorage((string) $cert->stamped_pdf_path);
-        if (!$storage) {
+        if (! $storage) {
             abort(404, 'File missing in storage.');
         }
 
         return $storage['disk']->response($storage['path'], null, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $cert->certificate_code . '.pdf"',
+            'Content-Disposition' => 'inline; filename="'.$cert->certificate_code.'.pdf"',
         ]);
     }
 
@@ -89,13 +100,13 @@ class CertificatePublicController extends Controller
     {
         $t = $request->query('t');
 
-        if (!$t) {
+        if (! $t || ! Str::isUuid($t)) {
             abort(404, 'Missing token.');
         }
 
         $cert = Certificate::where('public_token', $t)->firstOrFail();
 
-        if (!$cert->isValid()) {
+        if (! $cert->isValid()) {
             abort(403, 'Certificate is not valid for download.');
         }
 
@@ -104,11 +115,12 @@ class CertificatePublicController extends Controller
         }
 
         $storage = $this->resolveCertificateStorage((string) $cert->stamped_pdf_path);
-        if (!$storage) {
+        if (! $storage) {
             abort(404, 'File missing in storage.');
         }
 
-        $downloadName = $cert->certificate_code . '.pdf';
+        $downloadName = $cert->certificate_code.'.pdf';
+
         return $storage['disk']->download($storage['path'], $downloadName);
     }
 

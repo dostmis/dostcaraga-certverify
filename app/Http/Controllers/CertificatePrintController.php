@@ -12,7 +12,7 @@ class CertificatePrintController extends Controller
         $cert = Certificate::where('certificate_code', $code)->firstOrFail();
 
         $baseUrl = rtrim((string) config('app.url'), '/');
-        $verifyUrl = $baseUrl . route('cert.verify', ['t' => $cert->public_token], false);
+        $verifyUrl = $baseUrl.route('cert.verify', ['t' => $cert->public_token], false);
 
         return view('certificate.print', [
             'cert' => $cert,

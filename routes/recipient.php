@@ -14,10 +14,16 @@ Route::prefix('recipient')->name('recipient.')->group(function () {
         Route::get('register', [RecipientAuthController::class, 'showRegisterForm'])->name('register');
         Route::post('register', [RecipientAuthController::class, 'register']);
         Route::get('claim', [RecipientAuthController::class, 'showClaimLookup'])->name('claim.lookup');
-        Route::post('claim/lookup', [RecipientAuthController::class, 'claimLookup'])->name('claim.lookup.submit');
-        Route::post('claim/verify', [RecipientAuthController::class, 'claimVerify'])->name('claim.verify');
+        Route::post('claim/lookup', [RecipientAuthController::class, 'claimLookup'])
+            ->middleware('throttle:recipient-claim')
+            ->name('claim.lookup.submit');
+        Route::post('claim/verify', [RecipientAuthController::class, 'claimVerify'])
+            ->middleware('throttle:recipient-claim')
+            ->name('claim.verify');
         Route::get('claim/{token}', [RecipientAuthController::class, 'showClaimForm'])->name('claim.form');
-        Route::post('claim/{token}', [RecipientAuthController::class, 'claim'])->name('claim.submit');
+        Route::post('claim/{token}', [RecipientAuthController::class, 'claim'])
+            ->middleware('throttle:recipient-claim')
+            ->name('claim.submit');
     });
 
     Route::middleware('auth:recipient')->group(function () {

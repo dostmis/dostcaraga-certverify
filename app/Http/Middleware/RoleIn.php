@@ -11,7 +11,7 @@ class RoleIn
     public function handle(Request $request, Closure $next, ...$roles): Response
     {
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             abort(403, 'Unauthorized.');
         }
 
@@ -31,4 +31,3 @@ class RoleIn
         abort(403, 'Insufficient role privileges.');
     }
 }
-

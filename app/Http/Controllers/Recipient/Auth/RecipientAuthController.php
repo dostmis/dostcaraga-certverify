@@ -9,7 +9,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class RecipientAuthController extends Controller
@@ -99,16 +98,16 @@ class RecipientAuthController extends Controller
         $email = mb_strtolower(trim($validated['email']));
 
         // Fuzzy name match: split into words and require all to appear
-        $nameWords = array_filter(explode(' ', $name), fn($w) => mb_strlen($w) > 0);
+        $nameWords = array_filter(explode(' ', $name), fn ($w) => mb_strlen($w) > 0);
         $recipient = Recipient::whereRaw('LOWER(email) = ?', [$email])
-            ->where(function ($query) use ($nameWords, $name) {
+            ->where(function ($query) use ($nameWords) {
                 foreach ($nameWords as $word) {
-                    $query->whereRaw('LOWER(name) LIKE ?', ['%' . $word . '%']);
+                    $query->whereRaw('LOWER(name) LIKE ?', ['%'.$word.'%']);
                 }
             })
             ->first();
 
-        if (!$recipient) {
+        if (! $recipient) {
             return response()->json(['found' => false, 'message' => 'No matching record found. Please check your name and email.']);
         }
 
@@ -116,13 +115,12 @@ class RecipientAuthController extends Controller
             return response()->json(['found' => false, 'message' => 'This account has already been claimed. Please log in instead. If you think this is a mistake, contact mis@caraga.dost.gov.ph.']);
         }
 
+        // Do NOT disclose any part of the contact number here. Leaking even the
+        // last digits narrows a brute-force of the verification step.
         return response()->json([
             'found' => true,
             'recipient_id' => $recipient->id,
             'name' => $recipient->name,
-            'masked_contact' => $recipient->contact_number
-                ? substr($recipient->contact_number, -4)
-                : null,
         ]);
     }
 
@@ -134,9 +132,6 @@ class RecipientAuthController extends Controller
         $lookupFlash = [
             'verify_recipient_id' => $recipient?->id ?? $recipientId,
             'verify_recipient_name' => $recipient?->name ?? '',
-            'verify_recipient_masked' => ($recipient?->contact_number)
-                ? substr($recipient->contact_number, -4)
-                : null,
         ];
 
         $validator = Validator::make($request->all(), [
@@ -169,9 +164,6 @@ class RecipientAuthController extends Controller
             ])->withInput()->with([
                 'verify_recipient_id' => $recipient->id,
                 'verify_recipient_name' => $recipient->name,
-                'verify_recipient_masked' => $recipient->contact_number
-                    ? substr($recipient->contact_number, -4)
-                    : null,
             ]);
         }
 

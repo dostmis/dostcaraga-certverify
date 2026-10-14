@@ -427,8 +427,10 @@
           @endif
 
           <span class="pi-note">
-            @if ($canRegionalDirectorActions)
-              Export Selected CSV moves pending records to done. Delete works on pending only.
+            @if ($canEndorse)
+              Export Selected CSV moves pending records to done. @if ($canRegionalDirectorActions)Delete works on pending only.@endif
+            @elseif ($canRegionalDirectorActions)
+              Delete works on pending records only.
             @else
               In Pending filter: checked rows are exported and marked done. In Done filter: checked rows are exported only.
             @endif

@@ -10,8 +10,8 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use setasign\Fpdi\Fpdi;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 /**
  * Certificate row creation and PDF stamping.
@@ -23,13 +23,19 @@ use setasign\Fpdi\Fpdi;
 class CertificateGenerationService
 {
     public const STANDARD_NAME_POS_X = 30.0;
+
     public const STANDARD_NAME_POS_Y = 110.0;
+
     public const STANDARD_NAME_FONT_SIZE = 45.0;
+
     public const STANDARD_NAME_FONT_FAMILY = 'Times';
+
     public const NOT_APPLICABLE = 'Not Applicable';
 
     public const PROGRAM_NATIONAL_REGULAR = 'National/Regular Program';
+
     public const PROGRAM_SSCP = 'SSCP (Smart and Sustainable Communities Program)';
+
     public const PROGRAM_SETUP = 'SETUP (Small Enterprise Technology Upgrading Program)';
 
     public function dostPrograms(): array
@@ -47,8 +53,8 @@ class CertificateGenerationService
     /**
      * Build the certificate row payload for one participant.
      *
-     * @param  array<string, mixed>  $payload    Endorsement training payload.
-     * @param  array<string, mixed>  $participant One parsed participant row.
+     * @param  array<string, mixed>  $payload  Endorsement training payload.
+     * @param  array<string, mixed>  $participant  One parsed participant row.
      * @return array<string, mixed>
      */
     public function buildParticipantRow(array $payload, array $participant, ?int $recipientId): array
@@ -111,7 +117,7 @@ class CertificateGenerationService
         $rowData['endorsement_participant_index'] = $endorsementId === null ? null : $participantIndex;
 
         $cert = $this->createCertificate($rowData);
-        $sourcePath = 'certificates/source/' . $cert->certificate_code . '.pdf';
+        $sourcePath = 'certificates/source/'.$cert->certificate_code.'.pdf';
         $storage->copy($templatePath, $sourcePath);
         $this->stampCertificatePdf(
             $cert,
@@ -136,7 +142,7 @@ class CertificateGenerationService
      */
     public function assertPayloadIsGeneratable(array $payload, string $templatePath): void
     {
-        if (!Storage::disk('local')->exists($templatePath)) {
+        if (! Storage::disk('local')->exists($templatePath)) {
             throw new \RuntimeException('Template PDF for this request is missing in storage.');
         }
         if (empty($payload['training_title']) || empty($payload['training_date_from']) || empty($payload['issuing_office'])) {
@@ -148,14 +154,14 @@ class CertificateGenerationService
      * Return a template path FPDI can parse directly, converting once if needed.
      *
      * @return array{0: string, 1: ?string} The path to stamp from, and the
-     *         temporary path to clean up afterwards (null when none was made).
+     *                                      temporary path to clean up afterwards (null when none was made).
      */
     public function normalizeTemplateForFpdi(string $templatePath): array
     {
         $storage = Storage::disk('local');
 
         try {
-            (new Fpdi())->setSourceFile($storage->path($templatePath));
+            (new Fpdi)->setSourceFile($storage->path($templatePath));
 
             return [$templatePath, null];
         } catch (\Throwable $e) {
@@ -167,7 +173,7 @@ class CertificateGenerationService
         // convertPdfWithGhostscript writes to storage/app/tmp, which sits
         // outside the local disk root, so move it onto the disk to keep the
         // per-certificate Storage::copy() below working on relative paths.
-        $temporaryTemplatePath = 'tmp/template_normalized_' . Str::uuid() . '.pdf';
+        $temporaryTemplatePath = 'tmp/template_normalized_'.Str::uuid().'.pdf';
         $storage->put($temporaryTemplatePath, file_get_contents($convertedAbs));
         @unlink($convertedAbs);
 
@@ -190,7 +196,7 @@ class CertificateGenerationService
         ];
 
         $program = strtoupper(trim((string) ($data['dost_program'] ?? '')));
-        if (!in_array($program, $this->dostPrograms(), true)) {
+        if (! in_array($program, $this->dostPrograms(), true)) {
             $program = '';
         }
 
@@ -220,7 +226,7 @@ class CertificateGenerationService
                 break;
             }
         }
-        if ($letters === '' && !empty($words[0])) {
+        if ($letters === '' && ! empty($words[0])) {
             $letters = strtoupper($words[0][0]);
         }
         $short = substr($letters, 0, 3);
@@ -235,8 +241,8 @@ class CertificateGenerationService
         // this stays byte-for-byte equivalent to the previous date comparison
         // against the timestamp-without-time-zone column.
         $batchDate = now('Asia/Manila')->toDateString();
-        $batchNumber = Certificate::where('created_at', '>=', $batchDate . ' 00:00:00')
-            ->where('created_at', '<', Carbon::parse($batchDate)->addDay()->toDateString() . ' 00:00:00')
+        $batchNumber = Certificate::where('created_at', '>=', $batchDate.' 00:00:00')
+            ->where('created_at', '<', Carbon::parse($batchDate)->addDay()->toDateString().' 00:00:00')
             ->count() + 1;
         $batch = str_pad((string) $batchNumber, 2, '0', STR_PAD_LEFT);
 
@@ -244,7 +250,7 @@ class CertificateGenerationService
         $prefix = "{$year}-{$program}-{$short}-{$batch}-";
 
         return DB::transaction(function () use ($data, $prefix) {
-            $last = Certificate::where('certificate_code', 'like', $prefix . '%')
+            $last = Certificate::where('certificate_code', 'like', $prefix.'%')
                 ->orderByDesc('certificate_code')
                 ->value('certificate_code');
 
@@ -256,7 +262,8 @@ class CertificateGenerationService
                 }
             }
 
-            $code = $prefix . str_pad((string) $nextNumber, 3, '0', STR_PAD_LEFT);
+            $code = $prefix.str_pad((string) $nextNumber, 3, '0', STR_PAD_LEFT);
+
             return Certificate::create([
                 'certificate_code' => $code,
                 'participant_name' => $data['participant_name'],
@@ -306,8 +313,7 @@ class CertificateGenerationService
         bool $applyRegionalDirectorESign = false,
         ?string $captionText = null,
         string $captionAlignment = 'center'
-    ): void
-    {
+    ): void {
         $verifyUrl = $this->buildVerifyUrl($cert->public_token);
         $sourceAbs = Storage::disk('local')->path($sourcePath);
         $pdfContent = $this->renderStampedPdf(
@@ -325,7 +331,7 @@ class CertificateGenerationService
             $captionAlignment
         );
 
-        $stampedRel = 'certificates/stamped/' . $cert->certificate_code . '.pdf';
+        $stampedRel = 'certificates/stamped/'.$cert->certificate_code.'.pdf';
         Storage::disk('local')->put($stampedRel, $pdfContent);
 
         $cert->update([
@@ -347,11 +353,10 @@ class CertificateGenerationService
         bool $applyRegionalDirectorESign = false,
         ?string $captionText = null,
         string $captionAlignment = 'center'
-    ): string
-    {
+    ): string {
         $qrPng = QrCode::format('png')->size(220)->margin(1)->generate($verifyUrl);
 
-        $tmpQr = storage_path('app/tmp_qr_' . Str::uuid() . '.png');
+        $tmpQr = storage_path('app/tmp_qr_'.Str::uuid().'.png');
         @mkdir(dirname($tmpQr), 0777, true);
         file_put_contents($tmpQr, $qrPng);
         $temporaryFiles = [$tmpQr];
@@ -360,13 +365,13 @@ class CertificateGenerationService
             $temporaryFiles[] = $qrForPdf;
         }
 
-        $pdf = new Fpdi();
+        $pdf = new Fpdi;
         $converted = null;
         try {
             $pageCount = $pdf->setSourceFile($sourceAbs);
         } catch (\Throwable $e) {
             $converted = $this->convertPdfWithGhostscript($sourceAbs);
-            $pdf = new Fpdi();
+            $pdf = new Fpdi;
             $pageCount = $pdf->setSourceFile($converted);
         }
 
@@ -411,6 +416,7 @@ class CertificateGenerationService
                             // the PDF mirrors the editor character-for-character.
                             if ($lineRuns === []) {
                                 $currentCaptionY += 5.2;
+
                                 continue;
                             }
 
@@ -477,7 +483,7 @@ class CertificateGenerationService
         $baseUrl = rtrim((string) config('app.url'), '/');
         $verifyPath = route('cert.verify', ['t' => $token], false);
 
-        return $baseUrl . $verifyPath;
+        return $baseUrl.$verifyPath;
     }
 
     private function toLatin1(string $value): string
@@ -498,14 +504,14 @@ class CertificateGenerationService
     {
         $tmpDir = storage_path('app/tmp');
         @mkdir($tmpDir, 0777, true);
-        $outPath = $tmpDir . '/fpdi_' . Str::uuid() . '.pdf';
+        $outPath = $tmpDir.'/fpdi_'.Str::uuid().'.pdf';
 
         $cmd = 'gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/prepress -dNOPAUSE -dBATCH -dSAFER -o '
-            . escapeshellarg($outPath) . ' ' . escapeshellarg($sourceAbs);
+            .escapeshellarg($outPath).' '.escapeshellarg($sourceAbs);
 
         @exec($cmd, $output, $code);
 
-        if ($code !== 0 || !is_file($outPath)) {
+        if ($code !== 0 || ! is_file($outPath)) {
             $message = $code === 127
                 ? 'Ghostscript (gs) is not installed on the server. Please install it to process PDFs, or upload a PDF saved as version 1.4.'
                 : 'This PDF cannot be processed. Please re-save it as PDF 1.4 or contact the administrator.';
@@ -551,12 +557,12 @@ class CertificateGenerationService
 
         $dom = new \DOMDocument('1.0', 'UTF-8');
         $previousState = libxml_use_internal_errors(true);
-        $dom->loadHTML('<div>' . $markup . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $dom->loadHTML('<div>'.$markup.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         libxml_clear_errors();
         libxml_use_internal_errors($previousState);
 
         $root = $dom->getElementsByTagName('div')->item(0);
-        if (!$root instanceof \DOMElement) {
+        if (! $root instanceof \DOMElement) {
             return [];
         }
 
@@ -564,7 +570,7 @@ class CertificateGenerationService
         foreach ($root->childNodes as $childNode) {
             $this->collectCaptionStyledRuns($childNode, false, false, $state);
         }
-        if (!$state['lastWasBreak']) {
+        if (! $state['lastWasBreak']) {
             $state['lines'][] = $state['current'];
         }
 
@@ -575,7 +581,7 @@ class CertificateGenerationService
      * Walk a caption HTML node, appending styled runs and line breaks into the
      * shared $state accumulator.
      *
-     * @param array{lines: array<int, array<int, array{text: string, style: string}>>, current: array<int, array{text: string, style: string}>, lastWasBreak: bool} $state
+     * @param  array{lines: array<int, array<int, array{text: string, style: string}>>, current: array<int, array{text: string, style: string}>, lastWasBreak: bool}  $state
      */
     private function collectCaptionStyledRuns(\DOMNode $node, bool $bold, bool $italic, array &$state): void
     {
@@ -598,7 +604,7 @@ class CertificateGenerationService
             return;
         }
 
-        if (!$node instanceof \DOMElement) {
+        if (! $node instanceof \DOMElement) {
             return;
         }
 
@@ -618,7 +624,7 @@ class CertificateGenerationService
 
         // A block element starts on its own line: flush any pending inline content
         // before descending into it.
-        if ($isBlock && !$state['lastWasBreak']) {
+        if ($isBlock && ! $state['lastWasBreak']) {
             $state['lines'][] = $state['current'];
             $state['current'] = [];
             $state['lastWasBreak'] = true;
@@ -629,7 +635,7 @@ class CertificateGenerationService
         }
 
         // ...and it ends the line it occupied, unless a <br> already closed it.
-        if ($isBlock && !$state['lastWasBreak']) {
+        if ($isBlock && ! $state['lastWasBreak']) {
             $state['lines'][] = $state['current'];
             $state['current'] = [];
             $state['lastWasBreak'] = true;
@@ -638,14 +644,14 @@ class CertificateGenerationService
 
     private function captionStyleToken(bool $bold, bool $italic): string
     {
-        return ($bold ? 'B' : '') . ($italic ? 'I' : '');
+        return ($bold ? 'B' : '').($italic ? 'I' : '');
     }
 
     /**
      * Drop blank lines from the start and end of a caption so leading/trailing
      * empty editor lines do not push the caption off-centre.
      *
-     * @param array<int, array<int, array{text: string, style: string}>> $lines
+     * @param  array<int, array<int, array{text: string, style: string}>>  $lines
      * @return array<int, array<int, array{text: string, style: string}>>
      */
     private function trimBlankStyledLines(array $lines): array
@@ -674,12 +680,12 @@ class CertificateGenerationService
 
         $dom = new \DOMDocument('1.0', 'UTF-8');
         $previousState = libxml_use_internal_errors(true);
-        $dom->loadHTML('<div>' . $captionText . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $dom->loadHTML('<div>'.$captionText.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         libxml_clear_errors();
         libxml_use_internal_errors($previousState);
 
         $root = $dom->getElementsByTagName('div')->item(0);
-        if (!$root instanceof \DOMElement) {
+        if (! $root instanceof \DOMElement) {
             return null;
         }
 
@@ -704,7 +710,7 @@ class CertificateGenerationService
             return htmlspecialchars($node->nodeValue ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         }
 
-        if (!$node instanceof \DOMElement) {
+        if (! $node instanceof \DOMElement) {
             return '';
         }
 
@@ -712,10 +718,10 @@ class CertificateGenerationService
         $content = $this->sanitizeCaptionHtmlChildren($node);
 
         return match ($tagName) {
-            'strong', 'b' => '<strong>' . $content . '</strong>',
-            'em', 'i' => '<em>' . $content . '</em>',
+            'strong', 'b' => '<strong>'.$content.'</strong>',
+            'em', 'i' => '<em>'.$content.'</em>',
             'br' => '<br>',
-            'div', 'p' => '<div>' . ($content !== '' ? $content : '<br>') . '</div>',
+            'div', 'p' => '<div>'.($content !== '' ? $content : '<br>').'</div>',
             default => $content,
         };
     }
@@ -731,23 +737,26 @@ class CertificateGenerationService
             'BI' => 'Montserrat-BoldItalic.php',
         ];
         $fontFile = $fontMap[$style] ?? $fontMap[''];
-        $fontDefinition = $fontDir . DIRECTORY_SEPARATOR . $fontFile;
+        $fontDefinition = $fontDir.DIRECTORY_SEPARATOR.$fontFile;
 
         if (is_file($fontDefinition)) {
             $pdf->AddFont('Montserrat', $style, $fontFile, $fontDir);
             $pdf->SetFont('Montserrat', $style, $size);
+
             return true;
         }
 
-        $regularDefinition = $fontDir . DIRECTORY_SEPARATOR . 'Montserrat-Regular.php';
+        $regularDefinition = $fontDir.DIRECTORY_SEPARATOR.'Montserrat-Regular.php';
         if (is_file($regularDefinition)) {
             $pdf->AddFont('Montserrat', '', 'Montserrat-Regular.php', $fontDir);
             $pdf->SetFont('Montserrat', '', $size);
+
             return true;
         }
 
         $fallbackStyle = in_array($style, ['B', 'I', 'BI'], true) ? $style : '';
         $pdf->SetFont('Helvetica', $fallbackStyle, $size);
+
         return false;
     }
 
@@ -761,14 +770,14 @@ class CertificateGenerationService
             'BI' => 'Montserrat-BoldItalic.php',
         ];
 
-        return is_file(resource_path('fonts/' . ($fontMap[$style] ?? $fontMap[''])));
+        return is_file(resource_path('fonts/'.($fontMap[$style] ?? $fontMap[''])));
     }
 
     /**
      * Wrap a single caption line (a list of styled runs) into rendered visual
      * lines that each fit within $maxWidth.
      *
-     * @param array<int, array{text: string, style: string}> $runs
+     * @param  array<int, array{text: string, style: string}>  $runs
      */
     private function buildStyledPdfLines(Fpdi $pdf, array $runs, float $maxWidth, float $fontSize): array
     {
@@ -787,6 +796,7 @@ class CertificateGenerationService
                     $spaceWidth = $this->measurePdfCaptionText($pdf, ' ', $fontSize, $run['style']);
                     $currentLine[] = ['text' => ' ', 'style' => $run['style'], 'width' => $spaceWidth, 'is_space' => true];
                     $currentWidth += $spaceWidth;
+
                     continue;
                 }
 
@@ -853,6 +863,7 @@ class CertificateGenerationService
             foreach ($tokens as $token) {
                 if ($token['is_space']) {
                     $cursorX += $token['width'] + $extraSpace;
+
                     continue;
                 }
 
@@ -879,7 +890,7 @@ class CertificateGenerationService
         $pdf->SetXY($x, $y);
         $pdf->Write($lineHeight, $text);
 
-        if ($usesMontserrat && str_contains($style, 'B') && !$this->hasPdfCaptionFontDefinition($style)) {
+        if ($usesMontserrat && str_contains($style, 'B') && ! $this->hasPdfCaptionFontDefinition($style)) {
             $boldOffsets = [
                 [0.12, 0.00],
                 [0.24, 0.00],
@@ -897,6 +908,7 @@ class CertificateGenerationService
     private function measurePdfCaptionText(Fpdi $pdf, string $text, float $fontSize, string $style = ''): float
     {
         $this->setPdfCaptionFont($pdf, $fontSize, $style);
+
         return $pdf->GetStringWidth($text);
     }
 
@@ -911,10 +923,11 @@ class CertificateGenerationService
         $characters = preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         foreach ($characters as $character) {
-            $candidate = $current . $character;
+            $candidate = $current.$character;
             if ($current !== '' && $this->measurePdfCaptionText($pdf, $candidate, $fontSize, $style) > $maxWidth) {
                 $segments[] = $current;
                 $current = $character;
+
                 continue;
             }
 
@@ -928,7 +941,6 @@ class CertificateGenerationService
         return $segments === [] ? [$word] : $segments;
     }
 
-
     private function stampRegionalDirectorSignatureBlock(Fpdi $pdf, array $pageSize): void
     {
         $this->stampRegionalDirectorESign($pdf, $pageSize);
@@ -937,7 +949,7 @@ class CertificateGenerationService
     private function stampRegionalDirectorESign(Fpdi $pdf, array $pageSize): ?array
     {
         $esignPath = $this->resolveRegionalDirectorESignPath();
-        if (!$esignPath) {
+        if (! $esignPath) {
             return null;
         }
 
@@ -992,7 +1004,7 @@ class CertificateGenerationService
         }
 
         $scale = min($boxWidth / $nativeWidth, $boxHeight / $nativeHeight);
-        if ($scale <= 0 || !is_finite($scale)) {
+        if ($scale <= 0 || ! is_finite($scale)) {
             return [$boxWidth, $boxHeight];
         }
 
@@ -1011,7 +1023,7 @@ class CertificateGenerationService
      * Queue delivery emails, marking rows that cannot be emailed.
      *
      * @param  array<int, Certificate>  $certificates
-     * @return array{0: int, 1: int}  [queued, skipped]
+     * @return array{0: int, 1: int} [queued, skipped]
      */
     public function queueGeneratedCertificateEmails(array $certificates): array
     {
@@ -1034,6 +1046,7 @@ class CertificateGenerationService
                     'email_failed_at' => null,
                 ])->save();
                 $skipped++;
+
                 continue;
             }
 
@@ -1047,6 +1060,7 @@ class CertificateGenerationService
                     'email_failed_at' => null,
                 ])->save();
                 $skipped++;
+
                 continue;
             }
 

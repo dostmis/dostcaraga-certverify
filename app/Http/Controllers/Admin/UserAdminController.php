@@ -16,7 +16,7 @@ class UserAdminController extends Controller
     {
         $status = (string) $request->get('status', 'pending');
         $role = (string) $request->get('role', 'all');
-        if ($role !== 'all' && !in_array($role, User::roles(), true)) {
+        if ($role !== 'all' && ! in_array($role, User::roles(), true)) {
             $role = 'all';
         }
 
@@ -96,8 +96,8 @@ class UserAdminController extends Controller
         if ($search = $request->get('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'ILIKE', "%{$search}%")
-                  ->orWhere('email', 'ILIKE', "%{$search}%")
-                  ->orWhere('contact_number', 'ILIKE', "%{$search}%");
+                    ->orWhere('email', 'ILIKE', "%{$search}%")
+                    ->orWhere('contact_number', 'ILIKE', "%{$search}%");
             });
         }
 

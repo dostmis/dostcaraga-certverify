@@ -62,12 +62,15 @@ class CertificateCustomDostProjectTest extends TestCase
         $method->setAccessible(true);
 
         [, $participants] = $method->invoke($controller, $this->makeRequest(
-            participantsCsv: "name\nCherie S. De La Pe" . "\xF1" . "a\n"
+            participantsCsv: "name\nCherie S. De La Pe"."\xF1"."a\n"
         ));
 
         $this->assertCount(1, $participants);
-        $this->assertSame('Cherie S. De La Pena', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $participants[0]['name']));
-        $this->assertSame('Cherie S. De La Pe' . "\xC3\xB1" . 'a', $participants[0]['name']);
+        // The Windows-1252 0xF1 byte must be normalized to the UTF-8 encoding of
+        // "ñ" (0xC3 0xB1). (A TRANSLIT-to-ASCII assertion is intentionally
+        // avoided here: libiconv's transliteration output is platform-dependent
+        // — e.g. "~n" on macOS vs "n" on glibc — and does not test this app.)
+        $this->assertSame('Cherie S. De La Pe'."\xC3\xB1".'a', $participants[0]['name']);
         $this->assertTrue(mb_check_encoding($participants[0]['name'], 'UTF-8'));
     }
 

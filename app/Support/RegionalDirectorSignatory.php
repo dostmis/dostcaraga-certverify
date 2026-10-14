@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\Storage;
 class RegionalDirectorSignatory
 {
     public const KEY_ENABLED = 'cert_rd_esign_enabled';
+
     public const KEY_PATH = 'cert_rd_esign_path';
+
     public const ENV_OVERRIDE_PATH = 'CERT_RD_ESIGN_PATH_OVERRIDE';
 
     public static function enabled(): bool
@@ -46,7 +48,7 @@ class RegionalDirectorSignatory
 
     public static function resolvedPath(): ?string
     {
-        if (!static::enabled()) {
+        if (! static::enabled()) {
             return null;
         }
 
@@ -67,8 +69,8 @@ class RegionalDirectorSignatory
         }
 
         $candidates[] = public_path($trimmedPath);
-        $candidates[] = storage_path('app/public/' . $trimmedPath);
-        $candidates[] = storage_path('app/private/' . $trimmedPath);
+        $candidates[] = storage_path('app/public/'.$trimmedPath);
+        $candidates[] = storage_path('app/private/'.$trimmedPath);
         $candidates[] = base_path($rawPath);
 
         foreach ($candidates as $candidate) {
@@ -82,7 +84,7 @@ class RegionalDirectorSignatory
 
     public static function publicUrl(): ?string
     {
-        if (!static::enabled()) {
+        if (! static::enabled()) {
             return null;
         }
 

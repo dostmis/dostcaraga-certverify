@@ -20,12 +20,23 @@ class RegistrationTest extends TestCase
     {
         $response = $this->post('/register', [
             'name' => 'Test User',
+            'username' => 'testuser',
             'email' => 'test@example.com',
+            'role' => \App\Models\User::ROLE_ORGANIZER,
             'password' => 'password',
             'password_confirmation' => 'password',
         ]);
 
-        $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
+        // New registrations are created pending RD approval and are NOT
+        // logged in; the user is sent to the login screen.
+        $this->assertGuest();
+        $response->assertRedirect(route('login', absolute: false));
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'test@example.com',
+            'username' => 'testuser',
+            'approval_status' => 'pending',
+            'role' => \App\Models\User::ROLE_ORGANIZER,
+        ]);
     }
 }

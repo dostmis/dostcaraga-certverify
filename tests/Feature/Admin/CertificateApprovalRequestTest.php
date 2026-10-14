@@ -136,6 +136,6 @@ class CertificateApprovalRequestTest extends TestCase
 
     private function reviewKey(CertificateEndorsement $endorsement): string
     {
-        return 'cert_endorsements.participants_reviewed.' . $endorsement->id;
+        return 'cert_endorsements.participants_reviewed.'.$endorsement->id;
     }
 }

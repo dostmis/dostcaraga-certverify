@@ -5,8 +5,10 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     private const SETUP_PROGRAM = 'SETUP (Small Enterprise Technology Upgrading Program)';
+
     private const NOT_APPLICABLE = 'Not Applicable';
 
     public function up(): void
@@ -18,7 +20,7 @@ return new class extends Migration {
         DB::table('certificates')
             ->where('dost_program', self::SETUP_PROGRAM)
             ->update([
-                'setup_office_province' => DB::raw("COALESCE(NULLIF(dost_project, ''), '" . self::NOT_APPLICABLE . "')"),
+                'setup_office_province' => DB::raw("COALESCE(NULLIF(dost_project, ''), '".self::NOT_APPLICABLE."')"),
                 'dost_project' => self::NOT_APPLICABLE,
                 'project_code' => self::NOT_APPLICABLE,
             ]);
@@ -39,7 +41,7 @@ return new class extends Migration {
         DB::table('certificates')
             ->where('dost_program', self::SETUP_PROGRAM)
             ->update([
-                'dost_project' => DB::raw("COALESCE(NULLIF(setup_office_province, ''), '" . self::NOT_APPLICABLE . "')"),
+                'dost_project' => DB::raw("COALESCE(NULLIF(setup_office_province, ''), '".self::NOT_APPLICABLE."')"),
                 'project_code' => null,
             ]);
 

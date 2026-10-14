@@ -1,19 +1,17 @@
 <?php
 
-use App\Http\Controllers\ProfileController;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Admin\CertificateAdminController;
 use App\Http\Controllers\Admin\AccountSettingsController;
 use App\Http\Controllers\Admin\AnalyticsController;
+use App\Http\Controllers\Admin\CertificateAdminController;
 use App\Http\Controllers\Admin\ParticipantIntakeAdminController;
 use App\Http\Controllers\Admin\UserAdminController;
-use App\Http\Controllers\CertificatePublicController;
 use App\Http\Controllers\Api\ParticipantSearchController;
 use App\Http\Controllers\Api\PsgcController;
+use App\Http\Controllers\CertificatePublicController;
 use App\Http\Controllers\ParticipantIntakeController;
 use App\Http\Controllers\TelegramWebhookController;
 use Illuminate\Support\Facades\File;
-
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return auth()->check()
@@ -110,7 +108,11 @@ Route::post('/participant-intake/{token}', [ParticipantIntakeController::class, 
 Route::post('/webhooks/telegram/{secret}', TelegramWebhookController::class)
     ->name('webhooks.telegram');
 
-Route::get('/api/participants/search', [ParticipantSearchController::class, 'search']);
+Route::get('/api/participants/search', [ParticipantSearchController::class, 'search'])
+    ->middleware('throttle:participant-search');
+Route::post('/api/participants/verify', [ParticipantSearchController::class, 'verify'])
+    ->middleware('throttle:participant-verify')
+    ->name('participants.verify');
 
 Route::prefix('api/psgc')->group(function () {
     Route::get('/regions', [PsgcController::class, 'regions']);
@@ -120,7 +122,10 @@ Route::prefix('api/psgc')->group(function () {
 });
 
 Route::get('/app/{any?}', function () {
-    return File::get(public_path('app/index.html'));
+    $indexPath = public_path('app/index.html');
+    abort_unless(File::exists($indexPath), 404);
+
+    return File::get($indexPath);
 })->where('any', '.*');
 
 require __DIR__.'/auth.php';

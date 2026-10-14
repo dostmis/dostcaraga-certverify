@@ -3,7 +3,8 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * SQLite ignores VARCHAR length entirely, so this widening is a no-op
      * there and only needs to run on Postgres.

@@ -19,14 +19,14 @@ class EndorsementTelegramNotifier
         CertificateEndorsement $endorsement,
         mixed $submitter
     ): void {
-        if (!config('services.telegram_bot.enabled', false)) {
+        if (! config('services.telegram_bot.enabled', false)) {
             return;
         }
 
         $participantsCount = (int) ($endorsement->participants_count ?? 0);
         $notifyEvery = (bool) config('services.telegram_bot.notify_on_every_endorsement', true);
         $bulkThreshold = max(1, (int) config('services.telegram_bot.bulk_threshold', 50));
-        if (!$notifyEvery && $participantsCount < $bulkThreshold) {
+        if (! $notifyEvery && $participantsCount < $bulkThreshold) {
             return;
         }
 
@@ -44,11 +44,11 @@ class EndorsementTelegramNotifier
         $approvalsUrl = url('/admin/certificates/approvals');
 
         $message = "New certificate endorsement submitted.\n"
-            . "Training: {$trainingTitle}\n"
-            . "Schedule: {$dateRange}\n"
-            . "Participants: {$participantsCount}\n"
-            . "Submitted by: {$submittedBy}\n"
-            . "Review queue: {$approvalsUrl}";
+            ."Training: {$trainingTitle}\n"
+            ."Schedule: {$dateRange}\n"
+            ."Participants: {$participantsCount}\n"
+            ."Submitted by: {$submittedBy}\n"
+            ."Review queue: {$approvalsUrl}";
 
         $this->sendToChats($chatIds, $message, $endorsement->id);
     }
@@ -64,11 +64,11 @@ class EndorsementTelegramNotifier
         CertificateEndorsement $endorsement,
         string $error
     ): void {
-        if (!config('services.telegram_bot.enabled', false)) {
+        if (! config('services.telegram_bot.enabled', false)) {
             return;
         }
 
-        if (!config('services.telegram_bot.notify_on_generation_failure', true)) {
+        if (! config('services.telegram_bot.notify_on_generation_failure', true)) {
             return;
         }
 
@@ -86,12 +86,12 @@ class EndorsementTelegramNotifier
         $approvalsUrl = url('/admin/certificates/approvals');
 
         $message = "Certificate generation FAILED and was rolled back.\n"
-            . "Training: {$trainingTitle}\n"
-            . "Schedule: {$dateRange}\n"
-            . "Participants: {$participantsCount}\n"
-            . "Error: " . mb_substr($error, 0, 400) . "\n"
-            . "No certificates were issued and no emails were sent. The package is back in the approval queue.\n"
-            . "Approval queue: {$approvalsUrl}";
+            ."Training: {$trainingTitle}\n"
+            ."Schedule: {$dateRange}\n"
+            ."Participants: {$participantsCount}\n"
+            .'Error: '.mb_substr($error, 0, 400)."\n"
+            ."No certificates were issued and no emails were sent. The package is back in the approval queue.\n"
+            ."Approval queue: {$approvalsUrl}";
 
         $this->sendToChats($chatIds, $message, $endorsement->id);
     }
@@ -101,11 +101,11 @@ class EndorsementTelegramNotifier
         mixed $approver,
         int $generatedCount
     ): void {
-        if (!config('services.telegram_bot.enabled', false)) {
+        if (! config('services.telegram_bot.enabled', false)) {
             return;
         }
 
-        if (!config('services.telegram_bot.notify_on_rd_approval', true)) {
+        if (! config('services.telegram_bot.notify_on_rd_approval', true)) {
             return;
         }
 
@@ -130,12 +130,12 @@ class EndorsementTelegramNotifier
         $queueUrl = url('/admin/certificates?status=rd_approved');
 
         $message = "RD approved certificate endorsement.\n"
-            . "Training: {$trainingTitle}\n"
-            . "Schedule: {$dateRange}\n"
-            . "Participants: {$participantsCount}\n"
-            . "Generated: {$generatedCount}\n"
-            . "Approved by: {$approvedBy}\n"
-            . "Approved queue: {$queueUrl}";
+            ."Training: {$trainingTitle}\n"
+            ."Schedule: {$dateRange}\n"
+            ."Participants: {$participantsCount}\n"
+            ."Generated: {$generatedCount}\n"
+            ."Approved by: {$approvedBy}\n"
+            ."Approved queue: {$queueUrl}";
 
         $this->sendToChats($chatIds, $message, $endorsement->id);
     }
@@ -164,7 +164,7 @@ class EndorsementTelegramNotifier
                 continue;
             }
 
-            if (!preg_match('/^(-?\d+|@[A-Za-z0-9_]{5,})$/', $chatId)) {
+            if (! preg_match('/^(-?\d+|@[A-Za-z0-9_]{5,})$/', $chatId)) {
                 continue;
             }
 
@@ -196,7 +196,7 @@ class EndorsementTelegramNotifier
                         'disable_web_page_preview' => true,
                     ]);
 
-                if (!$response->successful()) {
+                if (! $response->successful()) {
                     Log::warning('Telegram notification failed.', [
                         'status' => $response->status(),
                         'body' => $response->body(),
@@ -219,10 +219,10 @@ class EndorsementTelegramNotifier
         $from = $payload['training_date_from'] ?? null;
         $to = $payload['training_date_to'] ?? $from;
 
-        if (!$from) {
+        if (! $from) {
             return '-';
         }
 
-        return $from === $to ? $from : ($from . ' to ' . $to);
+        return $from === $to ? $from : ($from.' to '.$to);
     }
 }

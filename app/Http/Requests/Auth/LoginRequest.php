@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use App\Models\User;
 
 class LoginRequest extends FormRequest
 {
@@ -46,35 +45,15 @@ class LoginRequest extends FormRequest
         $password = (string) $this->input('password');
         $remember = $this->boolean('remember');
 
-        $user = null;
-        if ($login !== '') {
-            $user = User::query()
-                ->where('email', $login)
-                ->orWhere('username', $login)
-                ->orWhere('name', $login)
-                ->first();
-        }
-
-        if ($user && $user->approval_status !== 'approved') {
-            if ($user->approval_status === 'rejected') {
-                throw ValidationException::withMessages([
-                    'login' => 'Your account request was rejected. Please contact an administrator.',
-                ]);
-            }
-
-            throw ValidationException::withMessages([
-                'login' => 'Your request is still pending approval by the Regional Director.',
-            ]);
-        }
-
+        // Authenticate by a unique identifier only (email or username).
+        // "name" is NOT unique and must never be a login identifier, otherwise
+        // the account whose status is checked can differ from the account that
+        // actually authenticates (approval-gate bypass).
         $attempted = false;
         if ($login !== '') {
             $attempted = Auth::attempt(['email' => $login, 'password' => $password], $remember);
             if (! $attempted) {
                 $attempted = Auth::attempt(['username' => $login, 'password' => $password], $remember);
-            }
-            if (! $attempted) {
-                $attempted = Auth::attempt(['name' => $login, 'password' => $password], $remember);
             }
         }
 
@@ -83,6 +62,24 @@ class LoginRequest extends FormRequest
 
             throw ValidationException::withMessages([
                 'login' => trans('auth.failed'),
+            ]);
+        }
+
+        // Enforce the approval gate on the account that actually authenticated.
+        $user = Auth::user();
+        if ($user && $user->approval_status !== 'approved') {
+            $status = $user->approval_status;
+            Auth::guard('web')->logout();
+            RateLimiter::hit($this->throttleKey());
+
+            if ($status === 'rejected') {
+                throw ValidationException::withMessages([
+                    'login' => 'Your account request was rejected. Please contact an administrator.',
+                ]);
+            }
+
+            throw ValidationException::withMessages([
+                'login' => 'Your request is still pending approval by the Regional Director.',
             ]);
         }
 

@@ -110,6 +110,7 @@ class AnalyticsController extends Controller
             ->map(function ($row) {
                 $row->region_label = $row->region ?: 'Unspecified';
                 $row->province_label = $row->province ?: 'Unspecified';
+
                 return $row;
             });
 
@@ -162,10 +163,10 @@ class AnalyticsController extends Controller
                 'certificate_code', 'participant_name', 'gender', 'age', 'industry',
                 'region', 'province', 'city_municipality', 'barangay', 'block_lot_purok',
                 'training_title', 'training_date', 'training_date_to', 'issuing_office',
-                'status', 'created_at'
+                'status', 'created_at',
             ]);
 
-        $fileNameBase = 'certificates_analytics_' . now('Asia/Manila')->format('Ymd_His');
+        $fileNameBase = 'certificates_analytics_'.now('Asia/Manila')->format('Ymd_His');
         $mapRow = function ($row): array {
             return array_map(fn ($cell) => $this->sanitizeForSpreadsheetCell($cell), [
                 $row->certificate_code,
@@ -188,7 +189,7 @@ class AnalyticsController extends Controller
         };
 
         if ($format === 'csv') {
-            $fileName = $fileNameBase . '.csv';
+            $fileName = $fileNameBase.'.csv';
             $headers = [
                 'Content-Type' => 'text/csv',
                 'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
@@ -197,8 +198,8 @@ class AnalyticsController extends Controller
             $callback = function () use ($data, $mapRow) {
                 $handle = fopen('php://output', 'w');
                 fputcsv($handle, [
-                    'Certificate Code','Participant Name','Gender','Age','Industry','Region','Province','City/Municipality',
-                    'Barangay','Block/Lot/Purok','Training Title','Training Date','Training Date To','Issuing Office','Status','Created At'
+                    'Certificate Code', 'Participant Name', 'Gender', 'Age', 'Industry', 'Region', 'Province', 'City/Municipality',
+                    'Barangay', 'Block/Lot/Purok', 'Training Title', 'Training Date', 'Training Date To', 'Issuing Office', 'Status', 'Created At',
                 ]);
                 foreach ($data as $row) {
                     fputcsv($handle, $mapRow($row));
@@ -210,27 +211,27 @@ class AnalyticsController extends Controller
         }
 
         // XLSX
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Certificates');
         $sheet->fromArray([
-            ['Certificate Code','Participant Name','Gender','Age','Industry','Region','Province','City/Municipality','Barangay','Block/Lot/Purok','Training Title','Training Date','Training Date To','Issuing Office','Status','Created At']
+            ['Certificate Code', 'Participant Name', 'Gender', 'Age', 'Industry', 'Region', 'Province', 'City/Municipality', 'Barangay', 'Block/Lot/Purok', 'Training Title', 'Training Date', 'Training Date To', 'Issuing Office', 'Status', 'Created At'],
         ], null, 'A1');
 
         $rowIndex = 2;
         foreach ($data as $row) {
-            $sheet->fromArray([$mapRow($row)], null, 'A' . $rowIndex);
+            $sheet->fromArray([$mapRow($row)], null, 'A'.$rowIndex);
             $rowIndex++;
         }
 
-        foreach (range('A','P') as $col) {
+        foreach (range('A', 'P') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
         $writer = new Xlsx($spreadsheet);
         $tmp = tempnam(sys_get_temp_dir(), 'xlsx');
         $writer->save($tmp);
-        $fileName = $fileNameBase . '.xlsx';
+        $fileName = $fileNameBase.'.xlsx';
 
         return response()->download($tmp, $fileName)->deleteFileAfterSend(true);
     }
@@ -272,7 +273,7 @@ class AnalyticsController extends Controller
             $query->where('gender', $filters['gender']);
         }
         if ($filters['q']) {
-            $q = '%' . $filters['q'] . '%';
+            $q = '%'.$filters['q'].'%';
             $query->where(function ($sub) use ($q) {
                 $sub->where('certificate_code', 'like', $q)
                     ->orWhere('participant_name', 'like', $q)
@@ -307,7 +308,7 @@ class AnalyticsController extends Controller
             $query->where('gender', $filters['gender']);
         }
         if ($filters['q']) {
-            $q = '%' . $filters['q'] . '%';
+            $q = '%'.$filters['q'].'%';
             $query->where(function ($sub) use ($q) {
                 $sub->where('participant_name', 'like', $q)
                     ->orWhere('email', 'like', $q)
@@ -325,13 +326,13 @@ class AnalyticsController extends Controller
 
     private function sanitizeForSpreadsheetCell($value)
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return $value;
         }
 
         $trimmed = ltrim($value);
         if ($trimmed !== '' && preg_match('/^[=\-+@]/', $trimmed) === 1) {
-            return "'" . $value;
+            return "'".$value;
         }
 
         return $value;

@@ -16,7 +16,7 @@ class AuthenticationTest extends TestCase
 
         $response
             ->assertStatus(200)
-            ->assertSee('Forgot your password?')
+            ->assertSee('Forgot password?')
             ->assertSee(route('password.request', absolute: false), false);
     }
 

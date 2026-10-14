@@ -15,12 +15,14 @@ class Setting extends Model
     public static function getValue(string $key, $default = null)
     {
         $row = static::query()->where('key', $key)->first();
+
         return $row ? $row->value : $default;
     }
 
     public static function getBool(string $key, bool $default = false): bool
     {
         $value = static::getValue($key, $default ? '1' : '0');
+
         return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool) $value;
     }
 

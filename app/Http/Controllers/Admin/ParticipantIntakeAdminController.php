@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\ParticipantIntakeEvent;
 use App\Models\ParticipantIntake;
+use App\Models\ParticipantIntakeEvent;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
@@ -32,7 +32,7 @@ class ParticipantIntakeAdminController extends Controller
                 : ($eventLinks->firstWhere('is_active', true) ?? null);
         }
         $activeEventUrl = $activeEventLink
-            ? rtrim((string) config('app.url'), '/') . route('participant.intake', ['token' => $activeEventLink->public_token], false)
+            ? rtrim((string) config('app.url'), '/').route('participant.intake', ['token' => $activeEventLink->public_token], false)
             : null;
         $countQuery = $this->scopeQueryForUser($user);
         if (($filters['event_id'] ?? 'all') !== 'all') {
@@ -83,12 +83,12 @@ class ParticipantIntakeAdminController extends Controller
             abort(403, 'You can only manage your own intake events.');
         }
 
-        $enabled = $request->boolean('enabled', !$event->is_active);
+        $enabled = $request->boolean('enabled', ! $event->is_active);
         $event->update([
             'is_active' => $enabled,
         ]);
 
-        return back()->with('success', 'Intake event link ' . ($enabled ? 'activated' : 'deactivated') . '.');
+        return back()->with('success', 'Intake event link '.($enabled ? 'activated' : 'deactivated').'.');
     }
 
     public function deleteEvent(Request $request, ParticipantIntakeEvent $event)
@@ -143,7 +143,7 @@ class ParticipantIntakeAdminController extends Controller
         $enabled = $request->boolean('enabled');
         \App\Models\Setting::setValue('participant_intake_enabled', $enabled ? '1' : '0', auth()->id());
 
-        return back()->with('success', 'Participant intake ' . ($enabled ? 'enabled' : 'disabled') . '.');
+        return back()->with('success', 'Participant intake '.($enabled ? 'enabled' : 'disabled').'.');
     }
 
     public function exportSelected(Request $request)
@@ -184,7 +184,7 @@ class ParticipantIntakeAdminController extends Controller
                 ]);
         }
 
-        $fileNameBase = 'participant_intakes_selected_' . now('Asia/Manila')->format('Ymd_His');
+        $fileNameBase = 'participant_intakes_selected_'.now('Asia/Manila')->format('Ymd_His');
 
         return $this->exportRows($rows, $format, $fileNameBase);
     }
@@ -201,7 +201,8 @@ class ParticipantIntakeAdminController extends Controller
             ->orderBy('participant_name')
             ->get();
 
-        $fileNameBase = 'participant_intakes_' . now('Asia/Manila')->format('Ymd_His');
+        $fileNameBase = 'participant_intakes_'.now('Asia/Manila')->format('Ymd_His');
+
         return $this->exportRows($rows, $format, $fileNameBase);
     }
 
@@ -211,7 +212,7 @@ class ParticipantIntakeAdminController extends Controller
         $mapRow = fn ($row) => $this->intakeExportRow($row);
 
         if ($format === 'csv') {
-            $fileName = $fileNameBase . '.csv';
+            $fileName = $fileNameBase.'.csv';
             $respHeaders = [
                 'Content-Type' => 'text/csv',
                 'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
@@ -229,14 +230,14 @@ class ParticipantIntakeAdminController extends Controller
             return Response::stream($callback, 200, $respHeaders);
         }
 
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Participants');
         $sheet->fromArray([$headers], null, 'A1');
 
         $rowIndex = 2;
         foreach ($rows as $row) {
-            $sheet->fromArray([$mapRow($row)], null, 'A' . $rowIndex);
+            $sheet->fromArray([$mapRow($row)], null, 'A'.$rowIndex);
             $rowIndex++;
         }
 
@@ -248,7 +249,8 @@ class ParticipantIntakeAdminController extends Controller
         $tmp = tempnam(sys_get_temp_dir(), 'xlsx');
         $writer->save($tmp);
 
-        $fileName = $fileNameBase . '.xlsx';
+        $fileName = $fileNameBase.'.xlsx';
+
         return response()->download($tmp, $fileName)->deleteFileAfterSend(true);
     }
 
@@ -315,7 +317,7 @@ class ParticipantIntakeAdminController extends Controller
         }
 
         $allowedStatuses = ['pending', 'done', 'all'];
-        if (!in_array($filters['status'], $allowedStatuses, true)) {
+        if (! in_array($filters['status'], $allowedStatuses, true)) {
             $filters['status'] = $defaultStatus;
         }
 
@@ -328,7 +330,7 @@ class ParticipantIntakeAdminController extends Controller
         }
 
         if ($filters['q']) {
-            $q = '%' . $filters['q'] . '%';
+            $q = '%'.$filters['q'].'%';
             $query->where(function ($sub) use ($q) {
                 $sub->where('participant_name', 'ilike', $q)
                     ->orWhere('last_name', 'ilike', $q)
@@ -360,13 +362,13 @@ class ParticipantIntakeAdminController extends Controller
 
     private function sanitizeForSpreadsheetCell($value)
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return $value;
         }
 
         $trimmed = ltrim($value);
         if ($trimmed !== '' && preg_match('/^[=\-+@]/', $trimmed) === 1) {
-            return "'" . $value;
+            return "'".$value;
         }
 
         return $value;
@@ -374,21 +376,21 @@ class ParticipantIntakeAdminController extends Controller
 
     private function ensureCanExportSelected(?User $user): void
     {
-        if (!$this->canEndorse($user)) {
+        if (! $this->canEndorse($user)) {
             abort(403, 'Only organizer/supervising unit roles can export selected participant submissions.');
         }
     }
 
     private function ensureRegionalDirectorAction(?User $user): void
     {
-        if (!$this->isRegionalDirector($user)) {
+        if (! $this->isRegionalDirector($user)) {
             abort(403, 'Only the Regional Director can perform this action.');
         }
     }
 
     private function canEndorse(?User $user): bool
     {
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -403,7 +405,7 @@ class ParticipantIntakeAdminController extends Controller
     private function eventLinksForUser(?User $user)
     {
         $query = ParticipantIntakeEvent::query();
-        if ($this->canEndorse($user) && !$this->isRegionalDirector($user)) {
+        if ($this->canEndorse($user) && ! $this->isRegionalDirector($user)) {
             $query->where('user_id', $user->id);
         }
 
@@ -413,7 +415,7 @@ class ParticipantIntakeAdminController extends Controller
     private function scopeQueryForUser(?User $user)
     {
         $query = ParticipantIntake::query();
-        if ($this->canEndorse($user) && !$this->isRegionalDirector($user)) {
+        if ($this->canEndorse($user) && ! $this->isRegionalDirector($user)) {
             $query->where('owner_user_id', $user->id);
         }
 

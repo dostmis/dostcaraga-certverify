@@ -7,21 +7,28 @@ use App\Models\ParticipantIntakeEvent;
 use App\Models\Recipient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class ParticipantIntakeController extends Controller
 {
     public function create(string $token)
     {
-        if (!\App\Models\Setting::getBool('participant_intake_enabled', true)) {
+        if (! \App\Models\Setting::getBool('participant_intake_enabled', true)) {
             return view('participant-intake.disabled');
+        }
+
+        // public_token is a uuid column; a non-uuid value would raise a database
+        // error, so reject malformed tokens as an invalid link (404).
+        if (! Str::isUuid($token)) {
+            abort(404, 'Participant intake link is invalid or inactive.');
         }
 
         $event = ParticipantIntakeEvent::query()
             ->where('public_token', $token)
             ->where('is_active', true)
             ->first();
-        if (!$event) {
+        if (! $event) {
             abort(404, 'Participant intake link is invalid or inactive.');
         }
 
@@ -39,15 +46,21 @@ class ParticipantIntakeController extends Controller
 
     public function store(Request $request, string $token)
     {
-        if (!\App\Models\Setting::getBool('participant_intake_enabled', true)) {
+        if (! \App\Models\Setting::getBool('participant_intake_enabled', true)) {
             return view('participant-intake.disabled');
+        }
+
+        // public_token is a uuid column; a non-uuid value would raise a database
+        // error, so reject malformed tokens as an invalid link (404).
+        if (! Str::isUuid($token)) {
+            abort(404, 'Participant intake link is invalid or inactive.');
         }
 
         $event = ParticipantIntakeEvent::query()
             ->where('public_token', $token)
             ->where('is_active', true)
             ->first();
-        if (!$event) {
+        if (! $event) {
             abort(404, 'Participant intake link is invalid or inactive.');
         }
 
@@ -138,12 +151,12 @@ class ParticipantIntakeController extends Controller
         $data['first_name'] = preg_replace('/\\s+/', ' ', trim((string) $data['first_name']));
         $middle = strtoupper(trim((string) ($data['middle_initial'] ?? '')));
         $middle = rtrim($middle, '.');
-        $data['middle_initial'] = $middle === '' ? null : mb_substr($middle, 0, 1) . '.';
+        $data['middle_initial'] = $middle === '' ? null : mb_substr($middle, 0, 1).'.';
 
         $data['participant_name'] = trim(
             $data['first_name']
-            . ($data['middle_initial'] ? ' ' . $data['middle_initial'] : '')
-            . ' ' . $data['last_name']
+            .($data['middle_initial'] ? ' '.$data['middle_initial'] : '')
+            .' '.$data['last_name']
         );
         $data['email'] = strtolower(trim($data['email']));
         $data['contact_number'] = preg_replace('/\\s+/', ' ', trim((string) $data['contact_number']));
@@ -161,7 +174,7 @@ class ParticipantIntakeController extends Controller
         $data['interested_dost_services_other'] = isset($data['interested_dost_services_other'])
             ? trim((string) $data['interested_dost_services_other'])
             : null;
-        if (!in_array('Others', $data['interested_dost_services'], true)) {
+        if (! in_array('Others', $data['interested_dost_services'], true)) {
             $data['interested_dost_services_other'] = null;
         }
 

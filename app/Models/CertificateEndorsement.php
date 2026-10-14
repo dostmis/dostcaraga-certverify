@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CertificateEndorsement extends Model
 {
     public const STATUS_ENDORSED = 'endorsed';
+
     public const STATUS_RD_APPROVED = 'rd_approved';
+
     public const STATUS_RD_REJECTED = 'rd_rejected';
 
     /**

@@ -13,9 +13,7 @@ class CertificateReadyMail extends Mailable
     use Queueable;
     use SerializesModels;
 
-    public function __construct(public Certificate $certificate)
-    {
-    }
+    public function __construct(public Certificate $certificate) {}
 
     public function build(): self
     {
@@ -26,7 +24,7 @@ class CertificateReadyMail extends Mailable
         if ($recipient) {
             $isDormant = ! $recipient->isClaimed();
             if ($isDormant && $recipient->claim_token) {
-                $claimUrl = $this->baseUrl() . route('recipient.claim.form', [
+                $claimUrl = $this->baseUrl().route('recipient.claim.form', [
                     'token' => $recipient->claim_token,
                 ], false);
             }
@@ -45,7 +43,7 @@ class CertificateReadyMail extends Mailable
         $attachment = $this->certificateAttachmentPath();
         if ($attachment) {
             $mail->attach($attachment, [
-                'as' => $this->certificate->certificate_code . '.pdf',
+                'as' => $this->certificate->certificate_code.'.pdf',
                 'mime' => 'application/pdf',
             ]);
         }
@@ -77,12 +75,12 @@ class CertificateReadyMail extends Mailable
 
     private function verifyUrl(): string
     {
-        return $this->baseUrl() . route('cert.verify', ['t' => $this->certificate->public_token], false);
+        return $this->baseUrl().route('cert.verify', ['t' => $this->certificate->public_token], false);
     }
 
     private function downloadUrl(): string
     {
-        return $this->baseUrl() . route('cert.download', ['t' => $this->certificate->public_token], false);
+        return $this->baseUrl().route('cert.download', ['t' => $this->certificate->public_token], false);
     }
 
     private function dateRange(): string

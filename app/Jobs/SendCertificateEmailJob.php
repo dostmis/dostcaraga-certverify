@@ -20,9 +20,7 @@ class SendCertificateEmailJob implements ShouldQueue
 
     public int $tries = 3;
 
-    public function __construct(public int $certificateId)
-    {
-    }
+    public function __construct(public int $certificateId) {}
 
     public function handle(): void
     {

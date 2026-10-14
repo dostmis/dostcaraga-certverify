@@ -44,7 +44,7 @@ class GenerateCertificateJob implements ShouldQueue
 
     /**
      * @param  array<string, mixed>  $participant  One parsed participant row.
-     * @param  array<string, mixed>  $payload      The endorsement training payload.
+     * @param  array<string, mixed>  $payload  The endorsement training payload.
      */
     public function __construct(
         public int $endorsementId,
@@ -54,8 +54,7 @@ class GenerateCertificateJob implements ShouldQueue
         public array $payload,
         public string $templatePath,
         public bool $applyRegionalDirectorESign = true,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<int, object>

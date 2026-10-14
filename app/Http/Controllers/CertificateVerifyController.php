@@ -11,7 +11,7 @@ class CertificateVerifyController extends Controller
     {
         $token = $request->query('t');
 
-        if (!$token) {
+        if (! $token) {
             return view('verify.show', [
                 'found' => false,
                 'code' => null,
@@ -22,7 +22,7 @@ class CertificateVerifyController extends Controller
 
         $cert = Certificate::where('public_token', $token)->first();
 
-        if (!$cert) {
+        if (! $cert) {
             return view('verify.show', [
                 'found' => false,
                 'code' => null,

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\SendCertificateEmailJob;
 use App\Models\Certificate;
 use App\Models\CertificateEndorsement;
 use App\Models\Recipient;
@@ -13,18 +12,17 @@ use App\Services\CertificateGenerationService;
 use App\Services\EndorsementGenerationCoordinator;
 use App\Services\EndorsementTelegramNotifier;
 use App\Services\RecipientMatchingService;
-use Carbon\Carbon;
 use App\Support\RegionalDirectorSignatory;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CertificateAdminController extends Controller
@@ -33,20 +31,26 @@ class CertificateAdminController extends Controller
     // now, and both the preview endpoints here and the queued generation job
     // must stamp at identical coordinates.
     private const STANDARD_NAME_POS_X = CertificateGenerationService::STANDARD_NAME_POS_X;
+
     private const STANDARD_NAME_POS_Y = CertificateGenerationService::STANDARD_NAME_POS_Y;
+
     private const STANDARD_NAME_FONT_SIZE = CertificateGenerationService::STANDARD_NAME_FONT_SIZE;
+
     private const STANDARD_NAME_FONT_FAMILY = CertificateGenerationService::STANDARD_NAME_FONT_FAMILY;
+
     private const NOT_APPLICABLE = CertificateGenerationService::NOT_APPLICABLE;
+
     private const CUSTOM_DOST_PROJECT_OPTION = 'Others';
+
     private const PARTICIPANTS_FILE_MAX_KB = 2048;
+
     private const CERTIFICATE_TEMPLATE_MAX_KB = 51200;
 
     public function __construct(
         private readonly CertificateGenerationService $generator,
         private readonly EndorsementTelegramNotifier $telegram,
         private readonly EndorsementGenerationCoordinator $generation,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -62,18 +66,18 @@ class CertificateAdminController extends Controller
 
         if ($search !== '') {
             $needle = mb_strtolower($search);
-                $query->where(function ($builder) use ($needle) {
+            $query->where(function ($builder) use ($needle) {
                 $builder
-                    ->whereRaw('LOWER(certificate_code) like ?', ['%' . $needle . '%'])
-                    ->orWhereRaw('LOWER(participant_name) like ?', ['%' . $needle . '%'])
-                    ->orWhereRaw('LOWER(training_title) like ?', ['%' . $needle . '%'])
-                    ->orWhereRaw('LOWER(issuing_office) like ?', ['%' . $needle . '%'])
-                    ->orWhereRaw('LOWER(status) like ?', ['%' . $needle . '%']);
+                    ->whereRaw('LOWER(certificate_code) like ?', ['%'.$needle.'%'])
+                    ->orWhereRaw('LOWER(participant_name) like ?', ['%'.$needle.'%'])
+                    ->orWhereRaw('LOWER(training_title) like ?', ['%'.$needle.'%'])
+                    ->orWhereRaw('LOWER(issuing_office) like ?', ['%'.$needle.'%'])
+                    ->orWhereRaw('LOWER(status) like ?', ['%'.$needle.'%']);
             });
         }
 
         $endorsementBaseQuery = CertificateEndorsement::query();
-        if (!$isRegionalDirector && $user) {
+        if (! $isRegionalDirector && $user) {
             $endorsementBaseQuery->where('submitted_by', $user->id);
         }
         $pendingEndorsementsCount = (clone $endorsementBaseQuery)
@@ -116,7 +120,7 @@ class CertificateAdminController extends Controller
             $endorsementsQuery = CertificateEndorsement::query()
                 ->orderByDesc('created_at');
 
-            if (!$isRegionalDirector && $user) {
+            if (! $isRegionalDirector && $user) {
                 $endorsementsQuery->where('submitted_by', $user->id);
             }
 
@@ -142,6 +146,7 @@ class CertificateAdminController extends Controller
         }
 
         $certs = $query->orderByDesc('id')->paginate(7)->withQueryString();
+
         return view('admin.certificates.index', compact(
             'certs',
             'search',
@@ -194,7 +199,7 @@ class CertificateAdminController extends Controller
                 $endorsement->setAttribute('participants_remaining_count', max(0, count($names) - 8));
                 $endorsement->setAttribute('first_participant_name', $names[0] ?? null);
 
-                if (!empty($names) && ! $endorsement->isGenerating()) {
+                if (! empty($names) && ! $endorsement->isGenerating()) {
                     $request->session()->put($this->endorsementParticipantsReviewedSessionKey($endorsement->id), true);
                     $endorsement->setAttribute('participants_review_ready', true);
                 }
@@ -240,7 +245,7 @@ class CertificateAdminController extends Controller
     public function create(Request $request)
     {
         $user = $request->user();
-        if (!$this->canPrepareCertificate($user)) {
+        if (! $this->canPrepareCertificate($user)) {
             abort(403, 'You are not allowed to prepare certificate endorsement requests.');
         }
 
@@ -357,8 +362,8 @@ class CertificateAdminController extends Controller
             throw new \RuntimeException('No embedded template is configured for the selected certificate type.');
         }
 
-        $absolutePath = public_path('templates/' . $defaultFileName);
-        if (!is_file($absolutePath)) {
+        $absolutePath = public_path('templates/'.$defaultFileName);
+        if (! is_file($absolutePath)) {
             throw new \RuntimeException("Default template file not found: {$defaultFileName}. Please ensure it exists in public/templates/ or upload a custom template.");
         }
 
@@ -370,13 +375,13 @@ class CertificateAdminController extends Controller
         if (($data['template_source'] ?? null) === 'custom' && $request->hasFile('certificate_pdf_shared')) {
             return $request->file('certificate_pdf_shared')->storeAs(
                 $directory,
-                'template_' . Str::uuid() . '.pdf',
+                'template_'.Str::uuid().'.pdf',
                 'local'
             );
         }
 
         $sourceAbs = $this->defaultTemplatePathForCertificateType((string) ($data['certificate_type'] ?? ''));
-        $localPath = trim($directory, '/') . '/template_' . Str::uuid() . '.pdf';
+        $localPath = trim($directory, '/').'/template_'.Str::uuid().'.pdf';
         Storage::disk('local')->put($localPath, file_get_contents($sourceAbs));
 
         return $localPath;
@@ -522,7 +527,7 @@ class CertificateAdminController extends Controller
 
     private function dostProjectProgramPrefix(string $projectCode): string
     {
-        if ($projectCode === '' || $projectCode === self::NOT_APPLICABLE || !str_contains($projectCode, '-')) {
+        if ($projectCode === '' || $projectCode === self::NOT_APPLICABLE || ! str_contains($projectCode, '-')) {
             return '';
         }
 
@@ -543,7 +548,7 @@ class CertificateAdminController extends Controller
     private function isDostProjectAllowedForProgram(string $program, string $projectName): bool
     {
         $requiredPrefix = $this->dostProgramProjectPrefixes()[$program] ?? '';
-        if ($requiredPrefix === '' || !$this->hasDostProjectsForPrefix($requiredPrefix)) {
+        if ($requiredPrefix === '' || ! $this->hasDostProjectsForPrefix($requiredPrefix)) {
             return true;
         }
 
@@ -565,7 +570,7 @@ class CertificateAdminController extends Controller
     private function isProjectFundProgram(string $program): bool
     {
         return in_array($program, array_keys($this->automaticSourceOfFundsByProgram()), true)
-            && !$this->isNationalRegularProgram($program);
+            && ! $this->isNationalRegularProgram($program);
     }
 
     private function isSscpProgram(string $program): bool
@@ -629,7 +634,7 @@ class CertificateAdminController extends Controller
     public function endorse(Request $request)
     {
         $user = $request->user();
-        if (!$this->canEndorseCertificates($user)) {
+        if (! $this->canEndorseCertificates($user)) {
             abort(403, 'Only organizer/supervising unit roles can endorse certificate requests.');
         }
 
@@ -652,7 +657,7 @@ class CertificateAdminController extends Controller
             $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
             $participantsFilePath = $participantsFile->storeAs(
                 'certificate-endorsements/participants',
-                'participants_' . Str::uuid() . '.' . $participantsExt,
+                'participants_'.Str::uuid().'.'.$participantsExt,
                 'local'
             );
 
@@ -670,7 +675,7 @@ class CertificateAdminController extends Controller
             ]);
 
             return redirect()->route('admin.certs.matching-review')
-                ->with('warning', $unresolvedCount . ' participant(s) could not be auto-matched. Please review and resolve before endorsing.');
+                ->with('warning', $unresolvedCount.' participant(s) could not be auto-matched. Please review and resolve before endorsing.');
         }
 
         return $this->finalizeEndorsement($user, $data, $participants, $request, $matchResults);
@@ -754,7 +759,7 @@ class CertificateAdminController extends Controller
             $participantsExt = strtolower((string) $participantsFile->getClientOriginalExtension());
             $participantsFilePath = $participantsFile->storeAs(
                 'certificate-endorsements/participants',
-                'participants_' . Str::uuid() . '.' . $participantsExt,
+                'participants_'.Str::uuid().'.'.$participantsExt,
                 'local'
             );
 
@@ -791,7 +796,7 @@ class CertificateAdminController extends Controller
             return back()->with('success', 'Only endorsed certificate requests can be approved.');
         }
         $reviewKey = $this->endorsementParticipantsReviewedSessionKey($endorsement->id);
-        if (!$request->session()->get($reviewKey, false)) {
+        if (! $request->session()->get($reviewKey, false)) {
             return back()->withErrors([
                 'Please review participants first. Download the CSV/XLSX file before approving this package.',
             ]);
@@ -826,9 +831,9 @@ class CertificateAdminController extends Controller
 
         return back()->with(
             'info',
-            "Generating {$count} certificate" . ($count === 1 ? '' : 's')
-            . " in the background. Emails are queued once every certificate is generated;"
-            . ' if any one fails the whole package is rolled back and returned here.'
+            "Generating {$count} certificate".($count === 1 ? '' : 's')
+            .' in the background. Emails are queued once every certificate is generated;'
+            .' if any one fails the whole package is rolled back and returned here.'
         );
     }
 
@@ -902,7 +907,7 @@ class CertificateAdminController extends Controller
 
         $tmpDir = storage_path('app/tmp');
         @mkdir($tmpDir, 0777, true);
-        $trimmedAbs = $tmpDir . '/rd-signature-' . Str::uuid() . '.png';
+        $trimmedAbs = $tmpDir.'/rd-signature-'.Str::uuid().'.png';
 
         if ($this->exportTrimmedSignatureImage($file, $trimmedAbs)) {
             $storedPath = 'certificates/signatories/regional-director-signature.png';
@@ -916,7 +921,7 @@ class CertificateAdminController extends Controller
 
         return $file->storeAs(
             'certificates/signatories',
-            'regional-director-signature.' . $extension,
+            'regional-director-signature.'.$extension,
             'public'
         );
     }
@@ -925,14 +930,14 @@ class CertificateAdminController extends Controller
         CertificateEndorsement $endorsement,
         mixed $submitter
     ): void {
-        if (!config('services.facebook_messenger.enabled', false)) {
+        if (! config('services.facebook_messenger.enabled', false)) {
             return;
         }
 
         $participantsCount = (int) ($endorsement->participants_count ?? 0);
         $notifyEvery = (bool) config('services.facebook_messenger.notify_on_every_endorsement', true);
         $bulkThreshold = max(1, (int) config('services.facebook_messenger.bulk_threshold', 50));
-        if (!$notifyEvery && $participantsCount < $bulkThreshold) {
+        if (! $notifyEvery && $participantsCount < $bulkThreshold) {
             return;
         }
 
@@ -954,11 +959,11 @@ class CertificateAdminController extends Controller
         }
 
         $message = "New certificate endorsement submitted.\n"
-            . "Training: {$trainingTitle}\n"
-            . "Schedule: {$dateRange}\n"
-            . "Participants: {$participantsCount}\n"
-            . "Submitted by: {$submittedBy}\n"
-            . "Review queue: {$approvalsUrl}";
+            ."Training: {$trainingTitle}\n"
+            ."Schedule: {$dateRange}\n"
+            ."Participants: {$participantsCount}\n"
+            ."Submitted by: {$submittedBy}\n"
+            ."Review queue: {$approvalsUrl}";
 
         $graphApiVersion = trim((string) config('services.facebook_messenger.graph_api_version', 'v22.0'));
         $graphApiVersion = ltrim($graphApiVersion, '/');
@@ -974,7 +979,7 @@ class CertificateAdminController extends Controller
                     'access_token' => $pageAccessToken,
                 ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::warning('Messenger notification failed.', [
                     'status' => $response->status(),
                     'body' => $response->body(),
@@ -998,17 +1003,17 @@ class CertificateAdminController extends Controller
 
     private function exportTrimmedSignatureImage(UploadedFile $file, string $destinationAbs): bool
     {
-        if (!function_exists('imagecropauto')) {
+        if (! function_exists('imagecropauto')) {
             return false;
         }
 
         $sourceAbs = $file->getRealPath();
-        if (!$sourceAbs) {
+        if (! $sourceAbs) {
             return false;
         }
 
         $imageInfo = @getimagesize($sourceAbs);
-        if (!$imageInfo) {
+        if (! $imageInfo) {
             return false;
         }
 
@@ -1019,7 +1024,7 @@ class CertificateAdminController extends Controller
             default => @imagecreatefromstring((string) @file_get_contents($sourceAbs)),
         };
 
-        if (!$sourceImage) {
+        if (! $sourceImage) {
             return false;
         }
 
@@ -1030,10 +1035,10 @@ class CertificateAdminController extends Controller
         if ($mime === 'image/png' && defined('IMG_CROP_TRANSPARENT')) {
             $croppedImage = @imagecropauto($sourceImage, IMG_CROP_TRANSPARENT);
         }
-        if (!$croppedImage && defined('IMG_CROP_SIDES')) {
+        if (! $croppedImage && defined('IMG_CROP_SIDES')) {
             $croppedImage = @imagecropauto($sourceImage, IMG_CROP_SIDES);
         }
-        if (!$croppedImage && defined('IMG_CROP_WHITE')) {
+        if (! $croppedImage && defined('IMG_CROP_WHITE')) {
             $croppedImage = @imagecropauto($sourceImage, IMG_CROP_WHITE);
         }
 
@@ -1060,7 +1065,7 @@ class CertificateAdminController extends Controller
      */
     public function suggestCaption(Request $request)
     {
-        if (!$this->canPrepareCertificate($request->user())) {
+        if (! $this->canPrepareCertificate($request->user())) {
             abort(403, 'You are not allowed to draft certificate captions.');
         }
 
@@ -1122,16 +1127,16 @@ class CertificateAdminController extends Controller
             return '';
         }
 
-        if (!$start && !$end) {
+        if (! $start && ! $end) {
             return '';
         }
 
-        if ($start && $end && !$start->isSameDay($end)) {
+        if ($start && $end && ! $start->isSameDay($end)) {
             if ($start->isSameMonth($end) && $start->isSameYear($end)) {
-                return $start->format('F j') . ' to ' . $end->format('j, Y');
+                return $start->format('F j').' to '.$end->format('j, Y');
             }
 
-            return $start->format('F j, Y') . ' to ' . $end->format('F j, Y');
+            return $start->format('F j, Y').' to '.$end->format('F j, Y');
         }
 
         return ($start ?? $end)->format('F j, Y');
@@ -1151,12 +1156,12 @@ class CertificateAdminController extends Controller
             $date = \Carbon\Carbon::now();
         }
 
-        return $date->format('jS') . ' day of ' . $date->format('F Y');
+        return $date->format('jS').' day of '.$date->format('F Y');
     }
 
     private function generateCaptionWithOllama(array $context): ?string
     {
-        if (!config('services.ollama.enabled', true)) {
+        if (! config('services.ollama.enabled', true)) {
             return null;
         }
 
@@ -1177,8 +1182,8 @@ class CertificateAdminController extends Controller
             'Venue' => $context['venue'],
             'Training Hours' => $context['hours'],
         ])->filter(fn ($v) => $v !== '' && $v !== null)
-          ->map(fn ($v, $k) => "- {$k}: {$v}")
-          ->implode("\n");
+            ->map(fn ($v, $k) => "- {$k}: {$v}")
+            ->implode("\n");
 
         $system = <<<'SYS'
 ROLE
@@ -1228,26 +1233,26 @@ SYS;
 
         $certType = $context['certificate_type'] ?: 'participation';
         $prompt = "Write the citation for the certification of {$certType}"
-            . " with the event " . ($context['title'] ?: 'the training')
-            . " conducted on " . ($context['date_range'] ?: 'the scheduled date')
-            . " and conducted at {$venue}.";
+            .' with the event '.($context['title'] ?: 'the training')
+            .' conducted on '.($context['date_range'] ?: 'the scheduled date')
+            ." and conducted at {$venue}.";
 
-        if (!empty($context['context'])) {
-            $prompt .= " This is the context: " . $context['context'];
+        if (! empty($context['context'])) {
+            $prompt .= ' This is the context: '.$context['context'];
         }
 
-        $prompt .= "\n\nAdditional details:\n" . $details
-            . "\n\nThe FINAL sentence must read exactly: Given this {$givenClause} at {$venue}.";
+        $prompt .= "\n\nAdditional details:\n".$details
+            ."\n\nThe FINAL sentence must read exactly: Given this {$givenClause} at {$venue}.";
 
-        if (!empty($context['instructions'])) {
+        if (! empty($context['instructions'])) {
             $prompt .= "\n\nAdditional instructions from the issuer (follow them, but keep all the rules above): "
-                . $context['instructions'];
+                .$context['instructions'];
         }
 
         try {
             $response = Http::timeout($timeout)
                 ->acceptJson()
-                ->post($baseUrl . '/api/generate', [
+                ->post($baseUrl.'/api/generate', [
                     'model' => $model,
                     'system' => $system,
                     'prompt' => $prompt,
@@ -1260,8 +1265,9 @@ SYS;
                     ],
                 ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::warning('Ollama caption request failed', ['status' => $response->status()]);
+
                 return null;
             }
 
@@ -1270,6 +1276,7 @@ SYS;
             return $caption !== '' ? $caption : null;
         } catch (\Throwable $e) {
             Log::warning('Ollama caption request errored', ['message' => $e->getMessage()]);
+
             return null;
         }
     }
@@ -1302,41 +1309,43 @@ SYS;
         $isParticipant = stripos($role, 'participant') !== false
             || stripos($context['certificate_type'] ?? '', 'participation') !== false;
 
-        $activity = trim(($context['activity_type'] ? $context['activity_type'] . ' ' : '') . $context['title']);
+        $activity = trim(($context['activity_type'] ? $context['activity_type'].' ' : '').$context['title']);
 
         if ($isParticipant) {
             // Participation format — 2 sentences, lowercase opening.
-            $title = $context['title'] !== '' ? '"' . $context['title'] . '"' : '"the activity"';
+            $title = $context['title'] !== '' ? '"'.$context['title'].'"' : '"the activity"';
             $s1 = "for actively participating during the {$title}"
-                . ($context['date_range'] !== '' ? ' held on ' . $context['date_range'] : '')
-                . ($context['venue'] !== '' ? ', held at ' . $context['venue'] : '') . '.';
+                .($context['date_range'] !== '' ? ' held on '.$context['date_range'] : '')
+                .($context['venue'] !== '' ? ', held at '.$context['venue'] : '').'.';
             $s2 = "Given this {$givenClause} at {$venue}.";
-            return $s1 . '<br><br>' . $s2;
+
+            return $s1.'<br><br>'.$s2;
         }
 
         // Recognition format — 2 sentences, lowercase opening.
-        $title = $context['title'] !== '' ? '"' . $context['title'] . '"' : '"the activity"';
+        $title = $context['title'] !== '' ? '"'.$context['title'].'"' : '"the activity"';
         $s1 = "for imparting his/her knowledge and expertise as a {$role} during the conduct of the {$title}"
-            . ($context['date_range'] !== '' ? ' held on ' . $context['date_range'] : '')
-            . ($context['venue'] !== '' ? ' at ' . $context['venue'] : '') . '.';
+            .($context['date_range'] !== '' ? ' held on '.$context['date_range'] : '')
+            .($context['venue'] !== '' ? ' at '.$context['venue'] : '').'.';
         $s2 = "Given this {$givenClause} at {$venue}.";
-        return $s1 . '<br><br>' . $s2;
+
+        return $s1.'<br><br>'.$s2;
     }
 
     public function livePreview(Request $request)
     {
-        if (!$this->canPrepareCertificate($request->user())) {
+        if (! $this->canPrepareCertificate($request->user())) {
             abort(403, 'You are not allowed to preview certificate requests.');
         }
 
         $templateSource = (string) $request->input('template_source', ($request->hasFile('certificate_pdf_shared') ? 'custom' : 'default'));
-        if (!in_array($templateSource, ['default', 'custom'], true)) {
+        if (! in_array($templateSource, ['default', 'custom'], true)) {
             return response()->json(['message' => 'Invalid template source.'], 422);
         }
 
         $certificateType = (string) ($request->input('certificate_type') ?: ($this->automaticCertificateTypeByRecipientType()[(string) $request->input('recipient_type', '')] ?? 'Certificate of Participation'));
 
-        if ($templateSource === 'custom' && !$request->hasFile('certificate_pdf_shared')) {
+        if ($templateSource === 'custom' && ! $request->hasFile('certificate_pdf_shared')) {
             return response()->json(['message' => 'Please upload the certificate template PDF when choosing custom upload.'], 422);
         }
 
@@ -1351,7 +1360,7 @@ SYS;
         }
 
         $participantName = $this->resolveLivePreviewParticipantName($request);
-        $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
+        $previewCode = 'PREVIEW-'.strtoupper(Str::random(6));
         $verifyUrl = $this->generator->buildVerifyUrl((string) Str::uuid());
 
         try {
@@ -1381,13 +1390,13 @@ SYS;
 
     public function preview(Request $request)
     {
-        if (!$this->canPrepareCertificate($request->user())) {
+        if (! $this->canPrepareCertificate($request->user())) {
             abort(403, 'You are not allowed to preview certificate requests.');
         }
 
         [$data, $participants] = $this->validatedCertificatePayload($request);
         $first = $participants[0] ?? null;
-        if (!$first) {
+        if (! $first) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => 'Please provide at least one participant.'], 422);
             }
@@ -1401,7 +1410,7 @@ SYS;
             $sourceAbs = $this->defaultTemplatePathForCertificateType((string) ($data['certificate_type'] ?? ''));
         }
 
-        $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
+        $previewCode = 'PREVIEW-'.strtoupper(Str::random(6));
         $verifyUrl = $this->generator->buildVerifyUrl((string) Str::uuid());
 
         try {
@@ -1467,23 +1476,23 @@ SYS;
                 $this->setupOfficeProvinces(),
                 [self::CUSTOM_DOST_PROJECT_OPTION]
             ))],
-            'dost_project_other' => ['exclude_unless:dost_project,' . self::CUSTOM_DOST_PROJECT_OPTION, 'required', 'string', 'max:255', 'regex:/.*\S.*/'],
+            'dost_project_other' => ['exclude_unless:dost_project,'.self::CUSTOM_DOST_PROJECT_OPTION, 'required', 'string', 'max:255', 'regex:/.*\S.*/'],
             'source_of_funds' => ['required', Rule::in($this->sourceOfFundsOptions())],
             'training_budget' => ['nullable', 'numeric', 'min:0'],
             'expected_number_of_participants' => ['nullable', 'integer', 'min:1'],
             'issuing_office' => ['required', 'string', 'max:255'],
-            'participants_file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:' . self::PARTICIPANTS_FILE_MAX_KB],
+            'participants_file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:'.self::PARTICIPANTS_FILE_MAX_KB],
             'template_source' => ['required', 'in:default,custom'],
-            'certificate_pdf_shared' => ['required_if:template_source,custom', 'file', 'mimes:pdf', 'max:' . self::CERTIFICATE_TEMPLATE_MAX_KB],
+            'certificate_pdf_shared' => ['required_if:template_source,custom', 'file', 'mimes:pdf', 'max:'.self::CERTIFICATE_TEMPLATE_MAX_KB],
             'caption_text' => ['nullable', 'string'],
             'caption_alignment' => ['nullable', 'string', 'in:left,center,right,justify'],
         ], [
             'participants_file.uploaded' => 'The participants file failed to upload due to a server upload limit. Please reduce file size and try again.',
-            'participants_file.max' => 'The participants file must not be greater than ' . (int) floor(self::PARTICIPANTS_FILE_MAX_KB / 1024) . ' MB.',
+            'participants_file.max' => 'The participants file must not be greater than '.(int) floor(self::PARTICIPANTS_FILE_MAX_KB / 1024).' MB.',
             'certificate_pdf_shared.required_if' => 'Please upload the certificate template PDF when choosing custom upload.',
             'certificate_pdf_shared.mimes' => 'The certificate template must be a valid PDF file.',
             'certificate_pdf_shared.uploaded' => 'The certificate template PDF failed to upload due to a server upload limit (PHP/Nginx). Please compress the PDF or contact admin to increase upload limits.',
-            'certificate_pdf_shared.max' => 'The certificate template PDF must not be greater than ' . (int) floor(self::CERTIFICATE_TEMPLATE_MAX_KB / 1024) . ' MB.',
+            'certificate_pdf_shared.max' => 'The certificate template PDF must not be greater than '.(int) floor(self::CERTIFICATE_TEMPLATE_MAX_KB / 1024).' MB.',
         ]);
 
         $data = $validator->validate();
@@ -1507,7 +1516,7 @@ SYS;
             $data['project_code'] = self::NOT_APPLICABLE;
             $data['source_of_funds'] = $this->regularFundsLabel();
         } elseif ($this->isSetupProgram($data['dost_program'])) {
-            if (!in_array($data['dost_project'], $this->setupOfficeProvinces(), true)) {
+            if (! in_array($data['dost_project'], $this->setupOfficeProvinces(), true)) {
                 throw ValidationException::withMessages([
                     'dost_project' => 'Please select a valid DOST Office/Province for SETUP.',
                 ]);
@@ -1518,7 +1527,7 @@ SYS;
         } else {
             $usesCustomDostProject = $data['dost_project'] === self::CUSTOM_DOST_PROJECT_OPTION;
 
-            if ($usesCustomDostProject && !$this->isSscpProgram($data['dost_program'])) {
+            if ($usesCustomDostProject && ! $this->isSscpProgram($data['dost_program'])) {
                 throw ValidationException::withMessages([
                     'dost_project' => 'Others, please specify is only available for SSCP.',
                 ]);
@@ -1534,13 +1543,13 @@ SYS;
                 $data['dost_project'] = trim((string) $data['dost_project_other']);
                 $data['project_code'] = null;
             } else {
-                if (!$this->isDostProjectAllowedForProgram($data['dost_program'], $data['dost_project'])) {
+                if (! $this->isDostProjectAllowedForProgram($data['dost_program'], $data['dost_project'])) {
                     throw ValidationException::withMessages([
                         'dost_project' => 'Please select a DOST Project under the chosen DOST Program.',
                     ]);
                 }
                 $data['project_code'] = $this->dostProjectCodeMap()[$data['dost_project']] ?? null;
-                if (!$data['project_code']) {
+                if (! $data['project_code']) {
                     throw ValidationException::withMessages([
                         'dost_project' => 'Please select a valid DOST Project.',
                     ]);
@@ -1600,8 +1609,7 @@ SYS;
         string $templatePath,
         bool $applyRegionalDirectorESign = false,
         ?int $endorsementId = null
-    ): array
-    {
+    ): array {
         $this->generator->assertPayloadIsGeneratable($payload, $templatePath);
 
         // FPDI cannot read the compressed cross-reference streams used by PDF
@@ -1637,7 +1645,7 @@ SYS;
     private function parseParticipantStoragePath(string $path): array
     {
         $storage = Storage::disk('local');
-        if (!$storage->exists($path)) {
+        if (! $storage->exists($path)) {
             throw new \RuntimeException('Participants file for this request is missing in storage.');
         }
 
@@ -1647,7 +1655,7 @@ SYS;
             return $this->parseDelimitedParticipants($absolutePath);
         }
         if ($ext === 'xlsx') {
-            if (!class_exists(\PhpOffice\PhpSpreadsheet\IOFactory::class)) {
+            if (! class_exists(\PhpOffice\PhpSpreadsheet\IOFactory::class)) {
                 throw new \RuntimeException('XLSX import requires phpoffice/phpspreadsheet.');
             }
 
@@ -1679,13 +1687,13 @@ SYS;
         if ($request->hasFile('participants_file')) {
             $file = $request->file('participants_file');
             $ext = strtolower($file->getClientOriginalExtension());
-            if ($ext === 'xlsx' && !class_exists(\PhpOffice\PhpSpreadsheet\IOFactory::class)) {
+            if ($ext === 'xlsx' && ! class_exists(\PhpOffice\PhpSpreadsheet\IOFactory::class)) {
                 throw \Illuminate\Validation\ValidationException::withMessages([
                     'participants_file' => 'XLSX import requires phpoffice/phpspreadsheet. Use CSV for now or install the dependency.',
                 ]);
             }
             $participants = $this->parseParticipantFile($file);
-            if (!empty($participants)) {
+            if (! empty($participants)) {
                 return $participants;
             }
         }
@@ -1751,7 +1759,7 @@ SYS;
     {
         $ext = strtolower($file->getClientOriginalExtension());
         $path = $file->getRealPath();
-        if (!$path) {
+        if (! $path) {
             return [];
         }
 
@@ -1769,7 +1777,7 @@ SYS;
     private function parseDelimitedParticipants(string $path): array
     {
         $handle = fopen($path, 'r');
-        if (!$handle) {
+        if (! $handle) {
             return [];
         }
 
@@ -1781,9 +1789,11 @@ SYS;
             if ($header === null) {
                 if ($this->rowHasName($normalized)) {
                     $header = $normalized;
+
                     continue;
                 }
                 $participants[] = $this->rowToParticipant($row);
+
                 continue;
             }
 
@@ -1791,7 +1801,7 @@ SYS;
         }
         fclose($handle);
 
-        return array_values(array_filter($participants, fn ($p) => !empty($p['name'])));
+        return array_values(array_filter($participants, fn ($p) => ! empty($p['name'])));
     }
 
     private function parseXlsxParticipants(string $path): array
@@ -1807,15 +1817,17 @@ SYS;
             if ($header === null) {
                 if ($this->rowHasName($normalized)) {
                     $header = $normalized;
+
                     continue;
                 }
                 $participants[] = $this->rowToParticipant($row);
+
                 continue;
             }
             $participants[] = $this->rowToParticipant($this->combineRow($header, $row));
         }
 
-        return array_values(array_filter($participants, fn ($p) => !empty($p['name'])));
+        return array_values(array_filter($participants, fn ($p) => ! empty($p['name'])));
     }
 
     private function normalizeImportedRow(array $row): array
@@ -1825,7 +1837,7 @@ SYS;
 
     private function normalizeImportedValue(mixed $value): mixed
     {
-        if (!is_string($value) || $value === '') {
+        if (! is_string($value) || $value === '') {
             return $value;
         }
 
@@ -1853,6 +1865,7 @@ SYS;
     {
         return array_map(function ($value) {
             $v = strtolower(trim((string) $value));
+
             return $v === '' ? null : $v;
         }, $row);
     }
@@ -1878,6 +1891,7 @@ SYS;
                 }
             }
         }
+
         return false;
     }
 
@@ -1887,6 +1901,7 @@ SYS;
         foreach ($row as $i => $value) {
             $combined[$header[$i] ?? $i] = $value;
         }
+
         return $combined;
     }
 
@@ -1898,6 +1913,7 @@ SYS;
                     return trim((string) $row[$key]);
                 }
             }
+
             return $default;
         };
 
@@ -1909,10 +1925,10 @@ SYS;
         if (($name === null || $name === '') && ($firstName !== '' || $lastName !== '')) {
             $middle = trim((string) $middleInitial);
             $middle = rtrim($middle, '.');
-            $middle = $middle === '' ? '' : (mb_substr($middle, 0, 1) . '.');
+            $middle = $middle === '' ? '' : (mb_substr($middle, 0, 1).'.');
             $assembled = trim((string) $firstName)
-                . ($middle !== '' ? ' ' . $middle : '')
-                . ' ' . trim((string) $lastName);
+                .($middle !== '' ? ' '.$middle : '')
+                .' '.trim((string) $lastName);
             $name = trim($assembled);
         }
 
@@ -2020,35 +2036,35 @@ SYS;
 
     private function inferProvinceFromCityRegion(?string $city, ?string $region): ?string
     {
-        if (!$city || !$region) {
+        if (! $city || ! $region) {
             return null;
         }
 
         static $psgc = null;
         if ($psgc === null) {
             $path = resource_path('data/psgc.json');
-            if (!file_exists($path)) {
+            if (! file_exists($path)) {
                 $path = public_path('data/psgc.json');
             }
-            if (!file_exists($path)) {
+            if (! file_exists($path)) {
                 return null;
             }
             $psgc = json_decode(file_get_contents($path), true) ?: [];
         }
 
         foreach ($psgc as $regionName => $regionData) {
-            if (!is_array($regionData)) {
+            if (! is_array($regionData)) {
                 continue;
             }
             if (strcasecmp($regionName, $region) !== 0) {
                 continue;
             }
             foreach ($regionData as $provName => $provData) {
-                if (!is_array($provData) || $provName === 'population') {
+                if (! is_array($provData) || $provName === 'population') {
                     continue;
                 }
                 foreach ($provData as $cityName => $cityData) {
-                    if (!is_array($cityData) || in_array($cityName, ['population', 'class', 'cityClass'], true)) {
+                    if (! is_array($cityData) || in_array($cityName, ['population', 'class', 'cityClass'], true)) {
                         continue;
                     }
                     if (strcasecmp($cityName, $city) === 0) {
@@ -2093,14 +2109,14 @@ SYS;
 
     private function ensureRegionalDirectorAction(?User $user): void
     {
-        if (!$this->isRegionalDirector($user)) {
+        if (! $this->isRegionalDirector($user)) {
             abort(403, 'Only Regional Director can approve or generate certificates.');
         }
     }
 
     private function ensureCertificateDownloadAccess(?User $user): void
     {
-        if (!$this->canDownloadCertificates($user)) {
+        if (! $this->canDownloadCertificates($user)) {
             abort(403, 'Only Regional Director or Organizer can download certificates.');
         }
     }
@@ -2115,13 +2131,13 @@ SYS;
         }
 
         $storage = $this->resolveCertificateStorage((string) $endorsement->template_pdf_path);
-        if (!$storage) {
+        if (! $storage) {
             abort(404, 'Uploaded template PDF is missing in storage.');
         }
 
         return response()->file($storage['absolute'], [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $this->endorsementPdfFilename($endorsement, 'uploaded-template') . '"',
+            'Content-Disposition' => 'inline; filename="'.$this->endorsementPdfFilename($endorsement, 'uploaded-template').'"',
         ]);
     }
 
@@ -2135,12 +2151,12 @@ SYS;
         }
 
         $storage = $this->resolveCertificateStorage((string) $endorsement->template_pdf_path);
-        if (!$storage) {
+        if (! $storage) {
             abort(404, 'Uploaded template PDF is missing in storage.');
         }
 
         $firstParticipantName = $this->firstEndorsementParticipantName($endorsement);
-        $previewCode = 'PREVIEW-' . strtoupper(Str::random(6));
+        $previewCode = 'PREVIEW-'.strtoupper(Str::random(6));
         $verifyUrl = $this->generator->buildVerifyUrl((string) Str::uuid());
 
         // The caption lives in the endorsement payload (see buildTrainingPayload),
@@ -2170,7 +2186,7 @@ SYS;
 
         return response($pdfContent, 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $this->endorsementPdfFilename($endorsement, 'preview') . '"',
+            'Content-Disposition' => 'inline; filename="'.$this->endorsementPdfFilename($endorsement, 'preview').'"',
         ]);
     }
 
@@ -2185,12 +2201,12 @@ SYS;
         }
 
         $storage = Storage::disk('local');
-        if (!$storage->exists($path)) {
+        if (! $storage->exists($path)) {
             abort(404, 'Participants file is missing in storage.');
         }
 
         $ext = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
-        if (!in_array($ext, ['csv', 'txt', 'xlsx'], true)) {
+        if (! in_array($ext, ['csv', 'txt', 'xlsx'], true)) {
             abort(400, 'Unsupported participants file type.');
         }
         $downloadExt = $ext === 'txt' ? 'csv' : $ext;
@@ -2201,8 +2217,9 @@ SYS;
             $titleSlug = 'certificate-package';
         }
 
-        $downloadName = 'participants_' . $titleSlug . '_endorsement_' . $endorsement->id . '.' . $downloadExt;
+        $downloadName = 'participants_'.$titleSlug.'_endorsement_'.$endorsement->id.'.'.$downloadExt;
         $request->session()->put($this->endorsementParticipantsReviewedSessionKey($endorsement->id), true);
+
         return $storage->download($path, $downloadName);
     }
 
@@ -2215,12 +2232,13 @@ SYS;
             abort(404, 'Stamped PDF not available.');
         }
         $storage = $this->resolveCertificateStorage((string) $cert->stamped_pdf_path);
-        if (!$storage) {
+        if (! $storage) {
             abort(404, 'File missing in storage.');
         }
 
         // Force download with a clean filename
-        $downloadName = $cert->certificate_code . '.pdf';
+        $downloadName = $cert->certificate_code.'.pdf';
+
         return $storage['disk']->download($storage['path'], $downloadName);
     }
 
@@ -2228,7 +2246,7 @@ SYS;
     {
         $this->ensureCertificateDownloadAccess($request->user());
 
-        if (!class_exists(\ZipArchive::class)) {
+        if (! class_exists(\ZipArchive::class)) {
             abort(500, 'ZIP extension not available.');
         }
 
@@ -2256,8 +2274,8 @@ SYS;
 
         $zipDir = storage_path('app/tmp');
         @mkdir($zipDir, 0777, true);
-        $zipPath = $zipDir . '/' . Str::uuid() . '.zip';
-        $zip = new \ZipArchive();
+        $zipPath = $zipDir.'/'.Str::uuid().'.zip';
+        $zip = new \ZipArchive;
 
         if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
             abort(500, 'Unable to create ZIP file.');
@@ -2269,10 +2287,10 @@ SYS;
                 continue;
             }
             $storage = $this->resolveCertificateStorage((string) $cert->stamped_pdf_path);
-            if (!$storage) {
+            if (! $storage) {
                 continue;
             }
-            $zip->addFile($storage['absolute'], $cert->certificate_code . '.pdf');
+            $zip->addFile($storage['absolute'], $cert->certificate_code.'.pdf');
             $added++;
         }
 
@@ -2283,7 +2301,8 @@ SYS;
             abort(404, 'No stamped PDFs available for this training.');
         }
 
-        $zipName = 'certificates_' . Str::slug($data['title']) . '_' . $data['date_from'] . '_to_' . $data['date_to'] . '.zip';
+        $zipName = 'certificates_'.Str::slug($data['title']).'_'.$data['date_from'].'_to_'.$data['date_to'].'.zip';
+
         return response()->download($zipPath, $zipName)->deleteFileAfterSend(true);
     }
 
@@ -2316,7 +2335,7 @@ SYS;
 
     private function endorsementParticipantsReviewedSessionKey(int $endorsementId): string
     {
-        return 'cert_endorsements.participants_reviewed.' . $endorsementId;
+        return 'cert_endorsements.participants_reviewed.'.$endorsementId;
     }
 
     private function firstEndorsementParticipantName(CertificateEndorsement $endorsement): string
@@ -2349,6 +2368,6 @@ SYS;
             $titleSlug = 'certificate-package';
         }
 
-        return $titleSlug . '_endorsement_' . $endorsement->id . '_' . $suffix . '.pdf';
+        return $titleSlug.'_endorsement_'.$endorsement->id.'_'.$suffix.'.pdf';
     }
 }

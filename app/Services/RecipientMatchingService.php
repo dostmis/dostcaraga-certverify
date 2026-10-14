@@ -101,7 +101,7 @@ class RecipientMatchingService
 
         return Recipient::whereRaw(
             'LOWER(name) LIKE ? AND LOWER(name) LIKE ?',
-            [mb_strtolower($firstName) . '%', '%' . mb_strtolower($lastName)]
+            [mb_strtolower($firstName).'%', '%'.mb_strtolower($lastName)]
         )->limit(10)->get();
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\GenerateCertificateJob;
+use App\Jobs\RefreshAnalyticsJob;
 use App\Models\Certificate;
 use App\Models\CertificateEndorsement;
 use App\Models\User;
@@ -200,6 +201,11 @@ class EndorsementGenerationCoordinator
             : null;
 
         $this->telegram->notifyOnRdApproval($endorsement, $approver, count($certificates));
+
+        // Refresh analytics off the request path. Dispatched only on success,
+        // after everything above has committed; it never touches generation
+        // state, so it cannot affect the rollback path.
+        RefreshAnalyticsJob::dispatch();
     }
 
     /**

@@ -14,13 +14,13 @@ const OUTCOME_COLOR = {
   generating: '#2a78d6',
 };
 
-export function choropleth(rows, mapName, mode, { max } = {}) {
+export function choropleth(rows, mapName, mode, { max, nameProperty = 'name' } = {}) {
   const data = rows.map((r) => ({ name: r.name, value: Number(r.total) }));
   const maxVal = max ?? Math.max(1, ...data.map((d) => d.value));
   return {
     tooltip: {
       trigger: 'item',
-      formatter: (p) => `${p.name}<br/><b>${nf(p.value ?? 0)}</b> certificates`,
+      formatter: (p) => `${p.name}<br/><b>${Number.isFinite(p.value) ? nf(p.value) : 0}</b> certificates`,
     },
     visualMap: {
       min: 0,
@@ -34,6 +34,10 @@ export function choropleth(rows, mapName, mode, { max } = {}) {
     series: [{
       type: 'map',
       map: mapName,
+      // nameProperty must be on the series — the faeldon GeoJSON names regions
+      // via adm2_en/adm3_en, not the default `name`, so data would never match
+      // and every region tooltips as NaN without this.
+      nameProperty,
       roam: false,
       emphasis: { label: { show: false }, itemStyle: { areaColor: PALETTE[mode][3] } },
       itemStyle: { borderColor: mode === 'dark' ? '#3f3f3c' : '#ffffff', borderWidth: 1 },

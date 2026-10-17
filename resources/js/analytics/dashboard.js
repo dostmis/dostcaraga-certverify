@@ -124,7 +124,7 @@ export default function analyticsDashboard(cfg) {
           fetch(this.geoMuniUrl).then((r) => r.json()),
         ]);
         this.geo.prov = prov; this.geo.muni = muni;
-        echarts.registerMap('caraga-prov', prov, { nameProperty: 'adm2_en' });
+        echarts.registerMap('caraga-prov', prov);
       } catch (e) { console.error('[analytics] geo load failed', e); }
     },
 
@@ -186,14 +186,14 @@ export default function analyticsDashboard(cfg) {
     renderMap() {
       const geo = this.data.executive.geo;
       if (this.mapLevel === 'province') {
-        const inst = this.draw('map', P.choropleth(geo.province, 'caraga-prov', this.mode()), geo.province);
+        const inst = this.draw('map', P.choropleth(geo.province, 'caraga-prov', this.mode(), { nameProperty: 'adm2_en' }), geo.province);
         if (inst) this.bindMapClick(inst, 'province');
       } else {
         const feats = (this.geo.muni?.features || []).filter((f) => String(f.properties.adm2_psgc) === String(this.drill.code));
         const mapName = `caraga-muni-${this.drill.code}`;
-        echarts.registerMap(mapName, { type: 'FeatureCollection', features: feats }, { nameProperty: 'adm3_en' });
+        echarts.registerMap(mapName, { type: 'FeatureCollection', features: feats });
         const rows = geo.municipality.filter((m) => String(m.province_code) === String(this.drill.code));
-        const inst = this.draw('map', P.choropleth(rows, mapName, this.mode()), rows);
+        const inst = this.draw('map', P.choropleth(rows, mapName, this.mode(), { nameProperty: 'adm3_en' }), rows);
         if (inst) this.bindMapClick(inst, 'municipality');
       }
     },

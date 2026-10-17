@@ -31,7 +31,7 @@ export default function impactAtlas(cfg) {
     async loadGeo() {
       try {
         const muni = await fetch(this.geoMuniUrl).then((r) => r.json());
-        echarts.registerMap('caraga-muni-all', muni, { nameProperty: 'adm3_en' });
+        echarts.registerMap('caraga-muni-all', muni);
       } catch (e) { console.error('[atlas] geo load failed', e); }
     },
 
@@ -117,7 +117,7 @@ export default function impactAtlas(cfg) {
       this.draw('map', {
         tooltip: { trigger: 'item', formatter: (p) => `${p.name}<br/><b>${nf(p.value ?? 0)}</b>` },
         visualMap: { min: 0, max: Math.max(1, ...data.map((d) => d.value)), left: 'left', bottom: 8, calculable: true, inRange: { color: SEQUENTIAL[mode] } },
-        series: [{ type: 'map', map: 'caraga-muni-all', roam: false, itemStyle: { borderColor: '#fff', borderWidth: 0.6 }, data }],
+        series: [{ type: 'map', map: 'caraga-muni-all', nameProperty: 'adm3_en', roam: false, itemStyle: { borderColor: '#fff', borderWidth: 0.6 }, data }],
       });
     },
 

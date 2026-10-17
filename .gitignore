@@ -49,3 +49,4 @@ certUI/
 
 # Security review (contains vulnerability details)
 SECURITY_REVIEW_2026-06-10.md
+.gstack/

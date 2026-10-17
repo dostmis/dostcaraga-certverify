@@ -28,6 +28,18 @@
           <div class="atlas-chart atlas-map" data-panel="map" role="img" aria-label="Choropleth of certificates by municipality"></div>
         </section>
 
+        <section class="atlas-card atlas-wide">
+          <h2>Participant journey</h2>
+          <p class="atlas-cap">From intake registration to a certificate, to a claimed recipient account.</p>
+          <div class="atlas-chart" data-panel="journey" role="img" aria-label="Sankey of intake to certified to claimed"></div>
+        </section>
+
+        <section class="atlas-card atlas-wide">
+          <h2>Training activity</h2>
+          <p class="atlas-cap">Certificates issued by date (days with fewer than 5 are not shown).</p>
+          <div class="atlas-chart atlas-cal" data-panel="calendar" role="img" aria-label="Calendar heatmap of certificates issued per day"></div>
+        </section>
+
         <div class="atlas-grid">
           <section class="atlas-card">
             <h2>By program</h2>
@@ -45,8 +57,10 @@
 
         <footer class="atlas-foot">
           <strong>About these figures.</strong> All numbers are aggregated from issued certificates.
-          Any group smaller than 5 is suppressed and shown as “&lt;5”. No barangay-level or personal
-          data is published. Boundaries: faeldon/philippines-json-maps (MIT) and OpenStreetMap (ODbL).
+          Any group smaller than 5 is suppressed — shown as “&lt;5”, and days with fewer than 5
+          certificates are omitted from the activity calendar. The participant journey shows only
+          aggregate stage counts. No barangay-level or personal data is published. Boundaries:
+          faeldon/philippines-json-maps (MIT) and OpenStreetMap (ODbL).
         </footer>
       </div>
     </template>
@@ -72,6 +86,8 @@
     @media (max-width:800px){.atlas-grid{grid-template-columns:1fr}}
     .atlas-chart{width:100%;height:320px}
     .atlas-map{height:460px}
+    .atlas-cal{height:220px}
+    .atlas-cap{font-size:12.5px;color:#64748b;margin:0 0 10px}
     .atlas-foot{font-size:12.5px;color:#94a3b8;text-align:center;border-top:1px dashed #e2e8f0;padding-top:16px;margin-top:6px;line-height:1.6}
   </style>
 </x-guest-layout>

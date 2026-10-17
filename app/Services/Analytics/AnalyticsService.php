@@ -301,16 +301,65 @@ class AnalyticsService
     public function publicReach(): array
     {
         if (! $this->available()) {
-            return ['available' => false, 'generated_at' => now()->toIso8601String(), 'reach' => []];
+            return [
+                'available' => false,
+                'generated_at' => now()->toIso8601String(),
+                'reach' => [],
+                'funnel' => null,
+                'activity' => [],
+            ];
         }
-
-        $rows = DB::table(self::PR)->get();
 
         return [
             'available' => true,
             'generated_at' => now()->toIso8601String(),
-            'reach' => $rows,
+            'reach' => DB::table(self::PR)->get(),
+            'funnel' => $this->publicFunnel(),
+            'activity' => $this->publicActivity(),
         ];
+    }
+
+    /**
+     * Recipient-journey funnel for the public Sankey: intake -> certified ->
+     * claimed/dormant. All are plain aggregate counts; any stage under 5 is
+     * suppressed to null (shown as "<5"), matching mv_public_reach.
+     *
+     * @return array<string, int|null>
+     */
+    private function publicFunnel(): array
+    {
+        $suppress = fn (int $n): ?int => $n < 5 ? null : $n;
+
+        $certificates = (int) DB::table(self::CF)->count();
+        $people = (int) DB::table(self::CF)->distinct()->count('person_key');
+        $claimed = (int) DB::table(self::CF)->where('is_claimed', true)->distinct()->count('person_key');
+        $intakes = (int) DB::table(self::IF)->count();
+        $converted = (int) DB::table(self::IF)->where('resulted_in_certificate', true)->count();
+
+        return [
+            'intakes' => $suppress($intakes),
+            'intakes_converted' => $suppress($converted),
+            'certificates' => $suppress($certificates),
+            'people' => $suppress($people),
+            'claimed' => $suppress($claimed),
+            'dormant' => $suppress(max($people - $claimed, 0)),
+        ];
+    }
+
+    /**
+     * Daily certificate volume for the public calendar heatmap. Pure volume by
+     * date (no demographics); days under 5 are suppressed for consistency with
+     * the <5 rule, so the heatmap shows only the busier training days.
+     */
+    private function publicActivity(): \Illuminate\Support\Collection
+    {
+        return DB::table(self::CF)
+            ->whereNotNull('training_date')
+            ->selectRaw('training_date::text AS date, COUNT(*) AS cert_count')
+            ->groupBy('training_date')
+            ->havingRaw('COUNT(*) >= 5')
+            ->orderBy('date')
+            ->get();
     }
 
     // ---- builders -------------------------------------------------------------

@@ -1,7 +1,9 @@
 // Public "Caraga Reach Atlas". Renders only the PII-free, <5-suppressed
 // aggregates from /impact/data.json. Registered as Alpine.data('impactAtlas').
-import { makeChart, echarts, currentMode, PALETTE, SEQUENTIAL } from './echarts';
+import { makeChart, echarts, currentMode, PALETTE, SEQUENTIAL, STATUS } from './echarts';
 import { nf } from './util';
+
+const STATUS_GOOD = STATUS.good;
 
 export default function impactAtlas(cfg) {
   return {
@@ -10,6 +12,8 @@ export default function impactAtlas(cfg) {
     loading: true,
     error: false,
     rows: [],
+    funnel: null,
+    activity: [],
     charts: {},
 
     init() {
@@ -38,6 +42,8 @@ export default function impactAtlas(cfg) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const body = await res.json();
         this.rows = (body.reach || []).map((r) => ({ ...r, cert_count: r.cert_count == null ? 0 : Number(r.cert_count) }));
+        this.funnel = body.funnel || null;
+        this.activity = (body.activity || []).map((a) => ({ date: a.date, cert_count: Number(a.cert_count) }));
         this.$nextTick(() => this.render());
       } catch (e) { this.error = true; console.error('[atlas] load failed', e); }
       finally { this.loading = false; }
@@ -46,9 +52,63 @@ export default function impactAtlas(cfg) {
     render() {
       const mode = currentMode();
       this.reachMap(mode);
+      this.journeySankey(mode);
+      this.activityCalendar(mode);
       this.programMix(mode);
       this.genderParity(mode);
       this.ageDistribution(mode);
+    },
+
+    journeySankey(mode) {
+      const f = this.funnel || {};
+      const v = (n) => (n == null ? 0 : Number(n)); // suppressed (<5) -> 0
+      const nodes = [
+        { name: 'Intake submissions' },
+        { name: 'Certificates issued' },
+        { name: 'Claimed accounts' },
+        { name: 'Dormant accounts' },
+      ];
+      const links = [
+        { source: 'Intake submissions', target: 'Certificates issued', value: v(f.intakes_converted) },
+        { source: 'Certificates issued', target: 'Claimed accounts', value: v(f.claimed) },
+        { source: 'Certificates issued', target: 'Dormant accounts', value: v(f.dormant) },
+      ].filter((l) => l.value > 0);
+
+      this.draw('journey', {
+        tooltip: { trigger: 'item', formatter: (p) => (p.dataType === 'edge'
+          ? `${p.data.source} → ${p.data.target}<br/><b>${nf(p.data.value)}</b>`
+          : `${p.name}`) },
+        series: [{
+          type: 'sankey', left: 8, right: 120, top: 10, bottom: 10,
+          nodeWidth: 14, nodeGap: 14,
+          label: { color: mode === 'dark' ? '#f8fafc' : '#0f172a', fontSize: 12 },
+          lineStyle: { color: 'gradient', opacity: 0.45 },
+          itemStyle: { borderWidth: 0 },
+          data: nodes,
+          links: links.length ? links : [{ source: 'Intake submissions', target: 'Certificates issued', value: 0 }],
+          color: [PALETTE[mode][0], PALETTE[mode][2], STATUS_GOOD, PALETTE[mode][3]],
+        }],
+      });
+    },
+
+    activityCalendar(mode) {
+      const data = this.activity.map((a) => [a.date, a.cert_count]);
+      const years = [...new Set(this.activity.map((a) => a.date.slice(0, 4)))].sort();
+      const range = years.length ? (years.length === 1 ? years[0] : [years[0], years[years.length - 1]]) : String(new Date().getFullYear());
+      const maxVal = Math.max(5, ...data.map((d) => d[1]));
+      this.draw('calendar', {
+        tooltip: { trigger: 'item', formatter: (p) => `${p.value[0]}<br/><b>${nf(p.value[1])}</b> certificates` },
+        visualMap: { min: 0, max: maxVal, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: SEQUENTIAL[mode] } },
+        calendar: {
+          top: 30, left: 30, right: 20, cellSize: ['auto', 16], range,
+          itemStyle: { borderColor: mode === 'dark' ? '#2a2a28' : '#eef2f7', color: mode === 'dark' ? '#1a1a19' : '#fff' },
+          splitLine: { show: false },
+          dayLabel: { color: mode === 'dark' ? '#c3c2b7' : '#52514e' },
+          monthLabel: { color: mode === 'dark' ? '#c3c2b7' : '#52514e' },
+          yearLabel: { show: false },
+        },
+        series: [{ type: 'heatmap', coordinateSystem: 'calendar', data }],
+      });
     },
 
     reachMap(mode) {

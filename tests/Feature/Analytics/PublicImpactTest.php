@@ -24,14 +24,23 @@ class PublicImpactTest extends TestCase
     public function test_public_data_feed_is_pii_free_and_has_no_barangay(): void
     {
         $res = $this->getJson(route('impact.data'))->assertOk()
-            ->assertJsonStructure(['available', 'generated_at', 'reach']);
+            ->assertJsonStructure(['available', 'generated_at', 'reach', 'activity']);
 
-        $reach = $res->json('reach');
-        $this->assertIsArray($reach);
+        // No forbidden key may appear in any reach cell or activity row.
+        foreach ([$res->json('reach'), $res->json('activity')] as $rows) {
+            $this->assertIsArray($rows);
+            foreach ($rows as $row) {
+                foreach (self::FORBIDDEN_KEYS as $key) {
+                    $this->assertArrayNotHasKey($key, $row, "Public feed leaked key: {$key}");
+                }
+            }
+        }
 
-        foreach ($reach as $row) {
-            foreach (self::FORBIDDEN_KEYS as $key) {
-                $this->assertArrayNotHasKey($key, $row, "Public reach row leaked key: {$key}");
+        // The journey funnel is aggregate counts only (no identifying keys).
+        $funnel = $res->json('funnel');
+        if (is_array($funnel)) {
+            foreach (array_keys($funnel) as $key) {
+                $this->assertNotContains($key, self::FORBIDDEN_KEYS, "Funnel leaked key: {$key}");
             }
         }
     }

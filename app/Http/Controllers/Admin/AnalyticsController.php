@@ -4,157 +4,23 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Certificate;
-use App\Models\ParticipantIntake;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
+/**
+ * Certificate analytics export (CSV/XLSX).
+ *
+ * The interactive analytics dashboard moved to AnalyticsDashboardController +
+ * the `analytics` materialized views; this controller now only backs the
+ * bulk analytics export still linked from the admin action menu.
+ */
 class AnalyticsController extends Controller
 {
-    public function index(Request $request)
-    {
-        [$query, $filters] = $this->baseQuery($request);
-        $intakeQuery = $this->baseIntakeQuery($filters);
-
-        $total = (clone $query)->count();
-        $uniqueParticipants = (clone $query)->distinct('participant_name')->count('participant_name');
-
-        $firstTimeParticipants = (clone $intakeQuery)
-            ->where('has_attended_dost_training', 'No')
-            ->count();
-
-        $repeatParticipants = (clone $intakeQuery)
-            ->where('has_attended_dost_training', 'Yes')
-            ->count();
-
-        $firstTimeRepeatBase = max($firstTimeParticipants + $repeatParticipants, 1);
-        $firstTimePct = round(($firstTimeParticipants / $firstTimeRepeatBase) * 100, 1);
-        $repeatPct = round(($repeatParticipants / $firstTimeRepeatBase) * 100, 1);
-
-        $byGender = (clone $query)
-            ->selectRaw('gender, COUNT(*) as total')
-            ->groupBy('gender')
-            ->pluck('total', 'gender');
-
-        $byIndustry = (clone $query)
-            ->selectRaw('industry, COUNT(*) as total')
-            ->groupBy('industry')
-            ->orderByDesc('total')
-            ->limit(6)
-            ->get();
-
-        $byRegion = (clone $query)
-            ->selectRaw('region, province, COUNT(*) as total')
-            ->groupBy('region', 'province')
-            ->orderByDesc('total')
-            ->limit(6)
-            ->get();
-
-        $byOffice = (clone $query)
-            ->selectRaw('issuing_office, COUNT(*) as total')
-            ->groupBy('issuing_office')
-            ->orderByDesc('total')
-            ->limit(5)
-            ->get();
-
-        $byTraining = (clone $query)
-            ->selectRaw('training_title, COUNT(*) as total')
-            ->groupBy('training_title')
-            ->orderByDesc('total')
-            ->limit(5)
-            ->get();
-
-        $byTopic = (clone $query)
-            ->selectRaw('topic, COUNT(*) as total')
-            ->groupBy('topic')
-            ->orderByDesc('total')
-            ->limit(8)
-            ->get();
-
-        $timeline = (clone $query)
-            ->selectRaw('training_date as d, COUNT(*) as total')
-            ->groupBy('d')
-            ->orderBy('d')
-            ->get();
-
-        $latest = (clone $query)
-            ->orderByDesc('created_at')
-            ->limit(5)
-            ->get();
-
-        $topParticipants = (clone $query)
-            ->selectRaw('participant_name, COUNT(*) as total, MAX(created_at) as last_issued_at')
-            ->whereNotNull('participant_name')
-            ->where('participant_name', '<>', '')
-            ->groupBy('participant_name')
-            ->orderByDesc('total')
-            ->orderByDesc('last_issued_at')
-            ->limit(5)
-            ->get();
-
-        $inclusionHeatmap = (clone $intakeQuery)
-            ->selectRaw('region, province')
-            ->selectRaw("SUM(CASE WHEN pwd_status = 'Yes' THEN 1 ELSE 0 END) as pwd_total")
-            ->selectRaw("SUM(CASE WHEN is_4ps_beneficiary = 'Yes' THEN 1 ELSE 0 END) as four_ps_total")
-            ->selectRaw("SUM(CASE WHEN is_elcac_community = 'Yes' THEN 1 ELSE 0 END) as elcac_total")
-            ->selectRaw(
-                "(SUM(CASE WHEN pwd_status = 'Yes' THEN 1 ELSE 0 END)
-                + SUM(CASE WHEN is_4ps_beneficiary = 'Yes' THEN 1 ELSE 0 END)
-                + SUM(CASE WHEN is_elcac_community = 'Yes' THEN 1 ELSE 0 END)) as inclusion_total"
-            )
-            ->groupBy('region', 'province')
-            ->orderByDesc('inclusion_total')
-            ->limit(12)
-            ->get()
-            ->map(function ($row) {
-                $row->region_label = $row->region ?: 'Unspecified';
-                $row->province_label = $row->province ?: 'Unspecified';
-
-                return $row;
-            });
-
-        $heatmapMax = (int) $inclusionHeatmap
-            ->flatMap(fn ($row) => [(int) $row->pwd_total, (int) $row->four_ps_total, (int) $row->elcac_total])
-            ->max();
-        $heatmapMax = max($heatmapMax, 1);
-
-        $industryChart = [
-            'labels' => $byIndustry->pluck('industry')->map(fn ($v) => $v ?: 'Unspecified')->values(),
-            'data' => $byIndustry->pluck('total')->values(),
-        ];
-
-        $genderChart = [
-            'labels' => ['Male', 'Female', 'Unspecified'],
-            'data' => [
-                $byGender['Male'] ?? 0,
-                $byGender['Female'] ?? 0,
-                ($byGender[''] ?? 0) + ($byGender[null] ?? 0),
-            ],
-        ];
-
-        $timelineChart = [
-            'labels' => $timeline->pluck('d')->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('Y-m-d'))->values(),
-            'data' => $timeline->pluck('total')->values(),
-        ];
-
-        $topicChart = [
-            'labels' => $byTopic->pluck('topic')->map(fn ($v) => $v ?: 'Unspecified')->values(),
-            'data' => $byTopic->pluck('total')->values(),
-        ];
-
-        return view('admin.analytics.index', compact(
-            'filters', 'total', 'uniqueParticipants', 'byGender', 'byIndustry',
-            'byRegion', 'byOffice', 'byTraining', 'byTopic', 'timeline', 'latest',
-            'topParticipants', 'industryChart', 'genderChart', 'timelineChart', 'topicChart',
-            'firstTimeParticipants', 'repeatParticipants', 'firstTimePct', 'repeatPct',
-            'inclusionHeatmap', 'heatmapMax'
-        ));
-    }
-
     public function export(Request $request)
     {
-        [$query, $filters] = $this->baseQuery($request);
+        [$query] = $this->baseQuery($request);
         $format = strtolower($request->get('format', 'xlsx'));
 
         $data = (clone $query)
@@ -283,45 +149,6 @@ class AnalyticsController extends Controller
         }
 
         return [$query, $filters];
-    }
-
-    private function baseIntakeQuery(array $filters)
-    {
-        $query = ParticipantIntake::query();
-
-        if ($filters['date_from']) {
-            $query->whereDate('created_at', '>=', $filters['date_from']);
-        }
-        if ($filters['date_to']) {
-            $query->whereDate('created_at', '<=', $filters['date_to']);
-        }
-        if ($filters['region']) {
-            $query->where('region', $filters['region']);
-        }
-        if ($filters['province']) {
-            $query->where('province', $filters['province']);
-        }
-        if ($filters['industry']) {
-            $query->where('industry', $filters['industry']);
-        }
-        if ($filters['gender']) {
-            $query->where('gender', $filters['gender']);
-        }
-        if ($filters['q']) {
-            $q = '%'.$filters['q'].'%';
-            $query->where(function ($sub) use ($q) {
-                $sub->where('participant_name', 'like', $q)
-                    ->orWhere('email', 'like', $q)
-                    ->orWhere('contact_number', 'like', $q)
-                    ->orWhere('organization_name', 'like', $q)
-                    ->orWhere('region', 'like', $q)
-                    ->orWhere('province', 'like', $q)
-                    ->orWhere('city_municipality', 'like', $q)
-                    ->orWhere('barangay', 'like', $q);
-            });
-        }
-
-        return $query;
     }
 
     private function sanitizeForSpreadsheetCell($value)

@@ -1,6 +1,6 @@
 # DOST Caraga CERTiFY — Certificate Repository System
 
-Laravel 11 application for issuing, verifying, and managing DOST Caraga training certificates. Built with PostgreSQL, Tailwind CSS, and queue-based email delivery.
+Laravel 12 application for issuing, verifying, and managing DOST Caraga training certificates. Built with PostgreSQL, Tailwind CSS, and queue-based email delivery.
 
 **New:** The system now serves as a **permanent certificate repository** — every certificate recipient gets their own account where certificates accumulate over time instead of being scattered across disconnected emails.
 
@@ -14,6 +14,7 @@ Laravel 11 application for issuing, verifying, and managing DOST Caraga training
 - [Full Workflow: End-to-End](#full-workflow-end-to-end)
 - [Participant Intake Forms](#participant-intake-forms)
 - [Certificate Verification (Public)](#certificate-verification-public)
+- [Analytics & Impact Atlas](#analytics--impact-atlas)
 - [Notifications](#notifications)
 - [Development Setup](#development-setup)
 - [Production Deployment](#production-deployment)
@@ -41,7 +42,7 @@ Registration  →  Certificate Issuance  →  Email Delivery  →  Public Verifi
 - **Recipient matching** — auto-links certificates to existing recipient accounts
 - **Public verification** — anyone can verify a certificate via QR code or URL
 - **Email delivery** with PDF attachment and claim/dashboard links
-- **Analytics dashboard** — gender, age, geographic, and program breakdowns
+- **Cross-filtered analytics dashboard** (ECharts) over a PII-free materialized-view read model, plus a public "Caraga Reach Atlas"
 - **Participant intake forms** — shareable links for event pre-registration
 - **Role-based access** — three staff roles with distinct permissions
 - **PSGC geographic data** — cascading region/province/municipality/barangay dropdowns
@@ -59,7 +60,10 @@ Registration  →  Certificate Issuance  →  Email Delivery  →  Public Verifi
 | **Unit Supervisor** | Create intake events, endorse certificate packages to RD, view intakes |
 | **Organizer** | Create certificate packages, endorse to RD, view analytics, create intake events |
 
-All staff roles log in at `/login`.
+All staff roles log in at `/login` using their **email or username** (names are
+not accepted as login identifiers). Self-registered staff accounts start as
+`pending` and **cannot sign in until the Regional Director approves them**; the
+approval gate is enforced against the account that actually authenticates.
 
 ### Certificate Recipients (recipients table)
 
@@ -115,6 +119,17 @@ Recipient gets email  →  Clicks [Claim Your Account]  →  Sets password
 - **Reminded every time** a new certificate is sent until they claim
 - **Once claimed** (password set), the claim_token is cleared
 - **Already claimed?** The claim link redirects to login with a message
+
+**Lost the email?** Recipients can also claim from the login page ("claim your
+account here" → `/recipient/claim`):
+
+1. Enter name + email → the system confirms a matching **unclaimed** record
+   exists (it does **not** reveal any part of the contact number)
+2. Verify by entering the **registered mobile number** — the match is checked
+   **server-side**, then a password can be set
+
+The claim lookup, verify, and token endpoints are **rate-limited** (10/min per IP)
+to prevent brute-forcing the verification step.
 
 ### My Certificates Dashboard
 
@@ -256,6 +271,16 @@ Organizers and Unit Supervisors create shareable intake event links. Each event 
 - If **not logged in** → full form with all demographic fields
 - Form includes: personal info, geographic data (PSGC cascading dropdowns), DOST program engagement, service interests
 
+**Returning participants** (not logged in) can pre-fill from a prior submission:
+1. Search by name — the lookup returns **only the matching name(s)**, never any
+   personal data, and the query is rate-limited (20/min per IP)
+2. Select the record and enter the **registered mobile number**
+3. The number is verified **server-side** (`POST /api/participants/verify`,
+   10/min per IP); the full profile is released for autofill **only on a match**
+
+This keeps participant contact details and demographics off the public wire until
+ownership is proven.
+
 **Submission:**
 - Duplicate detection (same email + name in same event → rejected)
 - Auto-creates dormant recipient account for new submitters
@@ -270,15 +295,86 @@ Organizers and Unit Supervisors create shareable intake event links. Each event 
 
 ## Certificate Verification (Public)
 
-Three public endpoints, all accessed via certificate's `public_token`:
+Four public endpoints, all accessed via certificate's `public_token` (a UUID):
 
 | Endpoint | Purpose | Throttle |
 |----------|---------|----------|
 | `/verify?t={token}` | View certificate details and validity | 30/min |
 | `/print?t={token}` | Printer-friendly view with RD signatory | 30/min |
+| `/preview?t={token}` | Inline stamped-PDF preview (valid certs only) | 30/min |
 | `/download?t={token}` | Download stamped PDF | 30/min |
 
 Each stamped certificate contains a QR code linking to the verify page.
+
+A malformed/non-UUID token is handled gracefully — `/verify` shows the "invalid
+certificate" page and `/print`, `/preview`, `/download` return `404` (never a
+server error).
+
+---
+
+## Analytics & Impact Atlas
+
+A cross-filtered analytics dashboard (Apache ECharts) is the post-login landing
+page for all staff, plus a public, privacy-safe "Caraga Reach Atlas" at `/impact`.
+
+### Read model (PostgreSQL `analytics` schema)
+
+Analytics never query the operational tables directly. A reversible migration
+creates an `analytics` schema with a PSGC name→code crosswalk and four
+materialized views, each with a unique index for `REFRESH … CONCURRENTLY`:
+
+| View | Grain | Notable columns |
+|------|-------|-----------------|
+| `mv_certificate_facts` | one row per certificate | year/month, program, training type, gender, age band, province/municipality PSGC codes, `is_claimed`, `is_repeat_participant`, `person_key` (hash) |
+| `mv_endorsement_facts` | one row per endorsement | submitter role, turnaround hours, outcome, generation-error flag |
+| `mv_intake_facts` | one row per intake | status, demographics, PSGC codes, `resulted_in_certificate` |
+| `mv_public_reach` | pre-aggregated | counts by year/province/municipality/program/gender/age; **cells < 5 suppressed to NULL**; **no barangay** |
+
+The views contain **no PII** — no names, emails, phone numbers, birthdates, or
+tokens — for Data Privacy Act (RA 10173) compliance. Geography is resolved at the
+municipality level (exact-or-prefix, province-scoped first then Caraga-wide), and
+the authoritative province is taken from the matched municipality, which corrects
+source rows whose province was mislabelled.
+
+### Refresh
+
+```bash
+php artisan analytics:refresh     # syncs the PSGC crosswalk, REFRESHes all views
+                                  # CONCURRENTLY under a lock, bumps analytics:version
+```
+
+- Scheduled nightly (01:30, `withoutOverlapping`, `onOneServer`).
+- Also dispatched as a queued `RefreshAnalyticsJob` after each successful
+  certificate generation (from the batch success callback — it runs outside any
+  transaction and never affects the generation rollback path).
+- Postgres-only; a no-op on other drivers (e.g. the SQLite test database).
+
+> After first migrating, run `php artisan analytics:refresh` once to populate the
+> views. For local development, seed realistic synthetic data first:
+> `php artisan db:seed --class=Database\\Seeders\\AnalyticsDemoSeeder` (refuses to
+> run when `APP_ENV=production`), then refresh.
+
+### Access matrix
+
+| Role | Executive tab | Operations tab |
+|------|---------------|----------------|
+| Regional Director | ✅ all data | ✅ all data |
+| Organizer | ✅ aggregates | ✅ scoped to packages/events they created or endorsed |
+| Unit Supervisor | ✅ aggregates | ✅ scoped to packages/events they created or endorsed |
+| Public | — (`/impact` only) | — |
+
+The dashboard reads from a single endpoint, `GET /admin/analytics/data`, which
+returns every panel's aggregates for the active filters in one JSON response,
+cached by role/scope + filter hash + the `analytics:version` key. Filters are
+whitelisted and validated (unknown or invalid filters return `422`).
+
+### Map boundaries (attribution)
+
+Choropleths use PSGC-coded GeoJSON in `public/geo/` (see `public/geo/README.md`):
+
+- **faeldon/philippines-json-maps** (MIT) — Caraga province + municipality boundaries (2023 PSGC).
+- **OpenStreetMap** (ODbL) — Butuan City boundary (relation 14141553), added because
+  the faeldon 2023 set ships no standalone polygon for the independent city.
 
 ---
 
@@ -508,12 +604,15 @@ certificate_endorsements
 | `/admin/certificates/create` | All staff | Create certificate package |
 | `/admin/certificates/endorse` | Unit Sup, Organizer | Endorse to RD |
 | `/admin/certificates/matching-review` | Unit Sup, Organizer | Match review screen |
-| `/admin/certificates/approvals` | All staff | Endorsement queue |
+| `/admin/certificates/approvals` | RD | Endorsement queue |
 | `/admin/certificates/endorsements/{id}/approve` | RD | Approve & queue generation |
 | `/admin/certificates/endorsements/{id}/generation-progress` | RD | JSON generation progress |
 | `/admin/participant-intakes` | All staff | Intake management |
 | `/admin/users` | RD | User management |
-| `/admin/analytics` | RD, Organizer | Analytics dashboard |
+| `/admin/dashboard` | All staff | Analytics dashboard (post-login landing) |
+| `/admin/analytics/data` | All staff | Dashboard data (JSON; ops scoped for non-RD) |
+| `/admin/analytics` | All staff | Redirects to `/admin/dashboard` (legacy) |
+| `/admin/analytics/export` | RD, Organizer | Certificate analytics CSV/XLSX export |
 
 ### Recipient Routes (public / auth:recipient)
 
@@ -521,24 +620,34 @@ certificate_endorsements
 |-----|-------|---------|
 | `/recipient/login` | Guest | Login |
 | `/recipient/register` | Guest | Self-registration (dormant) |
-| `/recipient/claim/{token}` | Guest | Claim account (set password) |
-| `/recipient/certificates` | Auth | My Certificates dashboard |
-| `/recipient/logout` | Auth | Logout |
+| `/recipient/claim` | Guest | Claim lookup (name + email) |
+| `/recipient/claim/lookup` · `/recipient/claim/verify` | Guest | Lookup + mobile verification (10/min) |
+| `/recipient/claim/{token}` | Guest | Claim account via email link (10/min) |
+| `/recipient/certificates` | Auth (recipient) | My Certificates dashboard |
+| `/recipient/profile` · `/recipient/profile/password` | Auth (recipient) | Profile / password |
+| `/recipient/logout` | Auth (recipient) | Logout |
 
 ### Public Routes (no auth)
 
-| URI | Purpose |
-|-----|---------|
-| `/verify?t={token}` | Verify certificate |
-| `/print?t={token}` | Print-friendly view |
-| `/download?t={token}` | Download stamped PDF |
-| `/participant-intake/{token}` | Intake form |
+| URI | Purpose | Throttle |
+|-----|---------|----------|
+| `/verify?t={token}` | Verify certificate | 30/min |
+| `/print?t={token}` | Print-friendly view | 30/min |
+| `/preview?t={token}` | Inline stamped-PDF preview | 30/min |
+| `/download?t={token}` | Download stamped PDF | 30/min |
+| `/participant-intake/{token}` | Intake form (GET) / submit (POST) | 60/min · 10/min |
+| `/api/participants/search` | Returning-participant lookup (id + name only) | 20/min |
+| `/api/participants/verify` | Server-side mobile verification → releases profile | 10/min |
+| `/api/psgc/{regions\|provinces\|municipalities\|barangays}` | PSGC cascading geo data | — |
+| `/impact` | Public Caraga Reach Atlas (page) | 60/min |
+| `/impact/data.json` | Public aggregate feed (<5 suppressed, no barangay, no PII) | 60/min |
+| `/webhooks/telegram/{secret}` | Telegram webhook (captures chat IDs) | — |
 
 ---
 
 ## Stack
 
-- **Framework:** Laravel 11
+- **Framework:** Laravel 12
 - **Database:** PostgreSQL 16
 - **Frontend:** Blade + Tailwind CSS + Alpine.js
 - **PDF:** FPDI (setasign/fpdi) + Ghostscript

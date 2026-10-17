@@ -21,13 +21,13 @@
     <div class="an-filters" role="group" aria-label="Filters">
       <label>Gender
         <select x-model="filters.gender" @change="afterFilterChange()">
-          <option :value="null">All</option><option value="Male">Male</option>
+          <option value="">All</option><option value="Male">Male</option>
           <option value="Female">Female</option><option value="Unknown">Unknown</option>
         </select>
       </label>
       <label>Age band
         <select x-model="filters.age_band" @change="afterFilterChange()">
-          <option :value="null">All</option>
+          <option value="">All</option>
           <template x-for="b in ['<18','18-24','25-34','35-44','45-59','60+','Unknown']" :key="b">
             <option :value="b" x-text="b"></option>
           </template>
@@ -35,7 +35,7 @@
       </label>
       <label>Program
         <select x-model="filters.program" @change="afterFilterChange()">
-          <option :value="null">All</option>
+          <option value="">All</option>
           <template x-for="p in (data?.executive?.program_mix ?? [])" :key="p.program_code">
             <option :value="p.program_code" x-text="p.program_code"></option>
           </template>
@@ -90,12 +90,12 @@
       <div class="an-card">
         <div class="an-card-head"><h3>Top trainings</h3></div>
         <table class="an-table">
-          <thead><tr><th>Training</th><th>Certificates</th></tr></thead>
+          <thead><tr><th>Training</th><th>Program</th><th>Certificates</th></tr></thead>
           <tbody>
-            <template x-for="t in topTrainings" :key="t.training_title_norm">
-              <tr><td x-text="t.training_title"></td><td x-text="fmtNum(t.total)"></td></tr>
+            <template x-for="t in topTrainings" :key="t.training_title_norm + '|' + t.program_code">
+              <tr><td x-text="t.training_title"></td><td class="an-prog" x-text="t.program_code"></td><td x-text="fmtNum(t.total)"></td></tr>
             </template>
-            <tr x-show="!topTrainings.length"><td colspan="2" class="an-empty">No certificates match these filters.</td></tr>
+            <tr x-show="!topTrainings.length"><td colspan="3" class="an-empty">No certificates match these filters.</td></tr>
           </tbody>
         </table>
       </div>

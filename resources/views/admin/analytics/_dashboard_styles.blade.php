@@ -39,6 +39,7 @@
   .an-table th,.an-table td{text-align:left;padding:8px 6px;border-bottom:1px solid #f1f5f9}
   .an-table th:last-child,.an-table td:last-child{text-align:right}
   .an-empty{color:#94a3b8;text-align:center!important;padding:18px}
+  .an-prog{color:#64748b;font-size:12px}
   .an-stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:8px 0}
   .an-stat-row>div{display:flex;flex-direction:column;gap:3px}
   .an-stat-row span{font-size:11.5px;color:#64748b;font-weight:600}

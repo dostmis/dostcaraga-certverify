@@ -187,9 +187,11 @@ class AnalyticsService
 
     private function topTrainings(AnalyticsFilters $filters): \Illuminate\Support\Collection
     {
+        // Group by title + program so the owning program is exact (a title run
+        // under several programs shows as a row per program, not a guess).
         return (clone $this->cf($filters))
-            ->selectRaw('MAX(training_title) AS training_title, training_title_norm, COUNT(*) AS total')
-            ->groupBy('training_title_norm')
+            ->selectRaw('MAX(training_title) AS training_title, program_code, training_title_norm, COUNT(*) AS total')
+            ->groupBy('training_title_norm', 'program_code')
             ->orderByDesc('total')
             ->limit(10)
             ->get();

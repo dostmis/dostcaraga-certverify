@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AccountSettingsController;
 use App\Http\Controllers\Admin\AnalyticsController;
+use App\Http\Controllers\Admin\AnalyticsDashboardController;
 use App\Http\Controllers\Admin\CertificateAdminController;
 use App\Http\Controllers\Admin\ParticipantIntakeAdminController;
 use App\Http\Controllers\Admin\UserAdminController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\Api\ParticipantSearchController;
 use App\Http\Controllers\Api\PsgcController;
 use App\Http\Controllers\CertificatePublicController;
 use App\Http\Controllers\ParticipantIntakeController;
+use App\Http\Controllers\PublicImpactController;
 use App\Http\Controllers\TelegramWebhookController;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
@@ -19,17 +21,16 @@ Route::get('/', function () {
         : redirect()->route('login');
 });
 
-Route::get('/dashboard', function () {
-    $user = auth()->user();
-    if ($user && ($user->isRegionalDirector() || $user->hasRole(\App\Models\User::ROLE_ORGANIZER))) {
-        return redirect()->route('admin.certs.index');
-    }
-
-    return redirect()->route('admin.participant-intakes.index');
-})->middleware(['auth', 'verified'])->name('dashboard');
+// All staff roles land on the cross-filtered analytics dashboard after login.
+Route::get('/dashboard', fn () => redirect()->route('admin.dashboard'))
+    ->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::prefix('admin')->middleware(['auth'])->group(function () {
     Route::middleware('role:regional_director,unit_supervisor,organizer')->group(function () {
+        // New analytics dashboard + its single data endpoint: all staff roles.
+        Route::get('/dashboard', [AnalyticsDashboardController::class, 'index'])->name('admin.dashboard');
+        Route::get('/analytics/data', [AnalyticsDashboardController::class, 'data'])->name('admin.analytics.data');
+
         Route::get('/participant-intakes', [ParticipantIntakeAdminController::class, 'index'])->name('admin.participant-intakes.index');
         Route::get('/certificates', [CertificateAdminController::class, 'index'])->name('admin.certs.index');
         Route::get('/certificates/approvals', [CertificateAdminController::class, 'approvals'])->name('admin.certs.approvals');
@@ -42,7 +43,8 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
     Route::middleware('role:regional_director,organizer')->group(function () {
         Route::get('/certificates/group-download', [CertificateAdminController::class, 'downloadGroup'])->name('admin.certs.group-download');
         Route::get('/certificates/{id}/download', [CertificateAdminController::class, 'download'])->name('admin.certs.download');
-        Route::get('/analytics', [AnalyticsController::class, 'index'])->name('admin.analytics.index');
+        // Legacy analytics route now redirects to the new dashboard.
+        Route::get('/analytics', fn () => redirect()->route('admin.dashboard'))->name('admin.analytics.index');
         Route::get('/analytics/export', [AnalyticsController::class, 'export'])->name('admin.analytics.export');
     });
 
@@ -97,6 +99,14 @@ Route::get('/preview', [CertificatePublicController::class, 'preview'])
 Route::get('/download', [CertificatePublicController::class, 'download'])
     ->middleware('throttle:30,1')
     ->name('cert.download');
+
+// Public "Caraga Reach Atlas" — aggregate-only, <5-suppressed, no PII.
+Route::get('/impact', [PublicImpactController::class, 'index'])
+    ->middleware('throttle:60,1')
+    ->name('impact.index');
+Route::get('/impact/data.json', [PublicImpactController::class, 'data'])
+    ->middleware('throttle:60,1')
+    ->name('impact.data');
 
 Route::get('/participant-intake/{token}', [ParticipantIntakeController::class, 'create'])
     ->middleware('throttle:60,1')

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Certificate;
+use App\Models\CertificateVerification;
+use App\Services\Analytics\VerificationLogger;
 use App\Support\RegionalDirectorSignatory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -10,7 +12,13 @@ use Illuminate\Support\Str;
 
 class CertificatePublicController extends Controller
 {
-    public function verify(Request $request)
+    /**
+     * Every exit from this method logs exactly one verification attempt — the
+     * failures as much as the successes, since hits on revoked certificates and
+     * bursts of malformed tokens are what the Integrity chapter reads. Logging
+     * never throws (see VerificationLogger).
+     */
+    public function verify(Request $request, VerificationLogger $logger)
     {
         $t = $request->query('t');
 
@@ -21,6 +29,7 @@ class CertificatePublicController extends Controller
 
         if (! $t) {
             $reason = 'Missing token.';
+            $logger->logFailure($request, CertificateVerification::OUTCOME_MALFORMED);
 
             return view('verify.show', compact('cert', 'found', 'code', 'reason'));
         }
@@ -29,6 +38,7 @@ class CertificatePublicController extends Controller
         // database error, so treat anything that is not a uuid as "not found".
         if (! Str::isUuid($t)) {
             $reason = 'Token not found.';
+            $logger->logFailure($request, CertificateVerification::OUTCOME_MALFORMED);
 
             return view('verify.show', compact('cert', 'found', 'code', 'reason'));
         }
@@ -37,12 +47,14 @@ class CertificatePublicController extends Controller
 
         if (! $cert) {
             $reason = 'Token not found.';
+            $logger->logFailure($request, CertificateVerification::OUTCOME_NOT_FOUND);
 
             return view('verify.show', compact('cert', 'found', 'code', 'reason'));
         }
 
         $found = true;
         $code = $cert->certificate_code;
+        $logger->logCertificate($request, $cert);
 
         return view('verify.show', compact('cert', 'found', 'code', 'reason'));
     }

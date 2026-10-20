@@ -15,3 +15,11 @@ Schedule::command('analytics:refresh')
     ->dailyAt('01:30')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Retention for raw verification rows. Runs after the refresh above, so the
+// verification materialized views have already absorbed the history being
+// pruned (see AnalyticsPruneVerifications).
+Schedule::command('analytics:prune-verifications')
+    ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->onOneServer();

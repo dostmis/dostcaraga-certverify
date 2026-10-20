@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AccountSettingsController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\AnalyticsDashboardController;
+use App\Http\Controllers\Admin\AnalyticsTargetsController;
 use App\Http\Controllers\Admin\CertificateAdminController;
 use App\Http\Controllers\Admin\ParticipantIntakeAdminController;
 use App\Http\Controllers\Admin\UserAdminController;
@@ -60,6 +61,11 @@ Route::prefix('admin')->middleware(['auth'])->group(function () {
 
     Route::middleware('role:regional_director')->group(function () {
         Route::get('/account-settings', [AccountSettingsController::class, 'edit'])->name('admin.account-settings.edit');
+
+        // Annual per-program targets. RD-only: targets are a planning
+        // instrument, and the dashboard's Pace chapter reads them.
+        Route::get('/analytics/targets', [AnalyticsTargetsController::class, 'edit'])->name('admin.analytics.targets.edit');
+        Route::post('/analytics/targets', [AnalyticsTargetsController::class, 'update'])->name('admin.analytics.targets.update');
 
         Route::post('/certificates', [CertificateAdminController::class, 'store'])->name('admin.certs.store');
         Route::post('/certificates/signatory', [CertificateAdminController::class, 'updateRegionalDirectorSignatory'])->name('admin.certs.signatory.update');

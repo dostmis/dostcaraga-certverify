@@ -12,12 +12,18 @@ class AnalyticsRefresh extends Command
 
     protected $description = 'Sync the PSGC crosswalk and refresh the analytics materialized views, then bump the cache version.';
 
-    /** Materialized views in dependency order (public_reach is built on certificate_facts). */
+    /**
+     * Materialized views in dependency order: public_reach and
+     * verification_facts are both built on certificate_facts, so they must
+     * come after it.
+     */
     private const VIEWS = [
         'analytics.mv_certificate_facts',
         'analytics.mv_endorsement_facts',
         'analytics.mv_intake_facts',
         'analytics.mv_public_reach',
+        'analytics.mv_verification_facts',
+        'analytics.mv_verification_daily',
     ];
 
     public const VERSION_KEY = 'analytics:version';
@@ -112,6 +118,15 @@ class AnalyticsRefresh extends Command
 
     private function refreshView(string $view): void
     {
+        // A view added by a later migration than the one the database has run
+        // is skipped rather than fatal, so one un-migrated view cannot take
+        // down the whole nightly refresh.
+        if (DB::selectOne('SELECT to_regclass(?) AS t', [$view])?->t === null) {
+            $this->warn("Skipped {$view} (not present; run migrations).");
+
+            return;
+        }
+
         // CONCURRENTLY needs a prior populated state + unique index (both true
         // after the migration created the views WITH DATA). Fall back to a
         // plain refresh if a view was somehow never populated.
